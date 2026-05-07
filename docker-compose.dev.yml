@@ -1,0 +1,39 @@
+# Development setup: bind-mount source for instant edits + uvicorn --reload.
+#
+#   docker compose -f docker-compose.dev.yml up --build
+#
+# Defaults to demo mode so no credentials are required. Override by setting
+# GOOGLE_APPLICATION_CREDENTIALS / GCS_SA_JSON in your shell before invoking
+# docker compose.
+
+services:
+  gcs-webui:
+    build: .
+    image: gcs-webui:dev
+    container_name: gcs-webui-dev
+    ports:
+      - "8080:8080"
+    environment:
+      GCS_DEMO_MODE: ${GCS_DEMO_MODE:-1}
+      GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-}
+      GCS_SA_JSON: ${GCS_SA_JSON:-}
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - ./app:/app/app:ro
+      - ./static:/app/static:ro
+    # Override the image's CMD with hot-reload uvicorn watching the bind mounts.
+    command:
+      - uvicorn
+      - app.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --reload
+      - --reload-dir
+      - /app/app
+      - --reload-dir
+      - /app/static
+    mem_limit: 512m
+    cpus: 1.0

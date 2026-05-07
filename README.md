@@ -35,11 +35,17 @@ docker run --rm -p 8080:8080 \
 
 Then open <http://localhost:8080>.
 
-Or with compose (also enforces read-only fs / dropped caps / 256 MB limit):
+### Compose presets
 
-```bash
-docker compose up --build
-```
+Three `docker-compose` files cover the common scenarios:
+
+| File | Use case | Run |
+| --- | --- | --- |
+| `docker-compose.yml` | Production-style: read-only fs, dropped caps, 256 MB cap. Mounts `./sa.json`. | `docker compose up --build` |
+| `docker-compose.demo.yml` | Zero-config demo (in-memory fake data). | `docker compose -f docker-compose.demo.yml up --build` |
+| `docker-compose.dev.yml` | Development: source bind-mount + uvicorn `--reload`. | `docker compose -f docker-compose.dev.yml up --build` |
+
+Each user can additionally sign in with their own SA from the UI's credentials pill — sessions are isolated.
 
 ## Demo mode (no credentials)
 

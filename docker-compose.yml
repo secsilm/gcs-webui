@@ -1,3 +1,14 @@
+# Production-style deployment.
+#
+#   # 1. drop your service-account JSON next to this file as `sa.json`
+#   # 2. docker compose up --build
+#
+# Or, if you keep the JSON in a secret manager, export it and run:
+#
+#   GCS_SA_JSON="$(cat /path/to/sa.json)" docker compose up --build
+#
+# The container runs read-only as a non-root user, with a 256 MB / 0.5 CPU cap.
+
 services:
   gcs-webui:
     build: .
@@ -7,13 +18,13 @@ services:
     ports:
       - "8080:8080"
     environment:
-      # Either point to a mounted SA file:
-      GOOGLE_APPLICATION_CREDENTIALS: /secrets/sa.json
-      # ...or set GCS_SA_JSON to the JSON contents directly (e.g. via secrets)
-      # GCS_SA_JSON: ${GCS_SA_JSON}
-      # Set GCS_DEMO_MODE=1 to bypass credentials and load fake data:
-      # GCS_DEMO_MODE: "1"
+      # Path inside the container to the mounted SA JSON. Ignored if you set
+      # GCS_SA_JSON instead.
+      GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-/secrets/sa.json}
+      GCS_SA_JSON: ${GCS_SA_JSON:-}
     volumes:
+      # Mount the SA file read-only. Comment this out if you use GCS_SA_JSON
+      # exclusively, or if every user signs in via the UI.
       - ./sa.json:/secrets/sa.json:ro
     read_only: true
     tmpfs:
@@ -23,3 +34,8 @@ services:
       - no-new-privileges:true
     mem_limit: 256m
     cpus: 0.5
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/healthz').status==200 else 1)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
