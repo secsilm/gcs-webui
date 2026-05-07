@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Iterator, Optional, Protocol
+from typing import BinaryIO, Iterator, Optional, Protocol
 
 
 @dataclass
@@ -35,6 +35,11 @@ class ListPage:
 class Storage(Protocol):
     """Abstract storage interface, satisfied by both GCS and the fake."""
 
+    backend: str
+    identity: Optional[str]   # display label e.g. SA email or "demo"
+    project: Optional[str]
+    read_only: bool
+
     def list_buckets(self) -> list[BucketInfo]: ...
 
     def list_objects(
@@ -53,3 +58,11 @@ class Storage(Protocol):
     def signed_url(self, bucket: str, name: str, expires_seconds: int = 3600) -> Optional[str]:
         """Return an HTTPS URL for direct download, or None if not supported."""
         ...
+
+    def upload_object(
+        self,
+        bucket: str,
+        name: str,
+        stream: BinaryIO,
+        content_type: Optional[str] = None,
+    ) -> ObjectInfo: ...

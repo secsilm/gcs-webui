@@ -90,3 +90,70 @@ def test_object_download_streams(client):
             assert "attachment" in r.headers.get("content-disposition", "")
             assert len(r.content) > 0
     _run(_())
+
+
+def test_session_cookie_assigned(client):
+    async def _():
+        async with client as c:
+            r = await c.get("/api/info")
+            assert r.status_code == 200
+            assert "gcs_webui_sid" in r.cookies
+            assert r.json()["session_authenticated"] is False
+    _run(_())
+
+
+def test_upload_then_listed(client):
+    async def _():
+        async with client as c:
+            r = await c.post(
+                "/api/object/upload",
+                data={"bucket": "demo-static-assets", "prefix": "uploads/"},
+                files={"files": ("hello.txt", b"hello world", "text/plain")},
+            )
+            assert r.status_code == 200, r.text
+            uploaded = r.json()["uploaded"]
+            assert uploaded[0]["name"] == "uploads/hello.txt"
+            assert uploaded[0]["size"] == 11
+            r2 = await c.get("/api/objects", params={
+                "bucket": "demo-static-assets",
+                "prefix": "uploads/",
+                "delimiter": "",
+            })
+            names = [i["name"] for i in r2.json()["items"]]
+            assert "uploads/hello.txt" in names
+    _run(_())
+
+
+def test_bad_sa_rejected():
+    # Each call gets a fresh app to keep sessions isolated
+    app = create_app(FakeStorage())
+    transport = httpx.ASGITransport(app=app)
+
+    async def _():
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+            r = await c.post("/api/auth/sa", content=b"not json")
+            assert r.status_code == 400
+            r = await c.post("/api/auth/sa", content=b'{"hello":"world"}')
+            assert r.status_code == 400
+    _run(_())
+
+
+def test_sessions_isolated_per_cookie():
+    """Two clients with different cookies don't share auth state."""
+    app = create_app(FakeStorage())
+    t = httpx.ASGITransport(app=app)
+
+    async def _():
+        async with httpx.AsyncClient(transport=t, base_url="http://test") as c1, \
+                   httpx.AsyncClient(transport=t, base_url="http://test") as c2:
+            # client 1 starts a session
+            await c1.get("/api/info")
+            sid1 = c1.cookies.get("gcs_webui_sid")
+            await c2.get("/api/info")
+            sid2 = c2.cookies.get("gcs_webui_sid")
+            assert sid1 and sid2 and sid1 != sid2
+            # client 1 logs out (no-op) — does not touch client 2
+            await c1.post("/api/auth/logout")
+            r2 = await c2.get("/api/info")
+            assert r2.status_code == 200
+    _run(_())

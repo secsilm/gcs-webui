@@ -21,6 +21,12 @@
     </div>
   </div>
 
+  <button id="auth-pill" class="auth-pill" type="button" title="Switch service account">
+    <span class="auth-pill-dot" id="auth-dot"></span>
+    <span class="auth-pill-text" id="auth-text">demo data</span>
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+  </button>
+
   <div class="sidebar-section-title">Buckets</div>
   <ul id="bucket-list" class="bucket-list" aria-label="buckets"></ul>
 
@@ -44,6 +50,11 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         <input id="search-input" type="search" placeholder="Filter by name…" autocomplete="off">
       </div>
+      <button id="upload-btn" class="primary" type="button" title="Upload files (or drop them anywhere)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <span>Upload</span>
+      </button>
+      <input id="upload-input" type="file" multiple hidden>
       <button id="refresh" class="ghost" type="button" title="Reload">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
         <span>Refresh</span>
@@ -75,6 +86,48 @@
     </div>
   </section>
 </main>
+
+<div id="drop-overlay" class="drop-overlay hidden" aria-hidden="true">
+  <div class="drop-card">
+    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    <div><strong>Drop files to upload</strong></div>
+    <div id="drop-target-label" class="muted">to gs://…</div>
+  </div>
+</div>
+
+<div id="toast-stack" class="toast-stack" aria-live="polite"></div>
+
+<dialog id="auth-dialog">
+  <form method="dialog" class="dialog-card">
+    <header>
+      <h3 style="font-family: var(--sans); font-size: 16px;">Service account credentials</h3>
+      <button class="icon-btn" type="submit" value="close" aria-label="Close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </header>
+    <p class="muted" style="margin: 0 0 12px;">
+      Drop a Google Cloud service account <code>.json</code> file, paste its contents, or pick from disk.
+      Credentials are kept in memory for this session only and are never written to disk.
+    </p>
+    <div id="sa-drop" class="sa-drop" tabindex="0">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      <div>Drop SA JSON here</div>
+      <div class="muted small">or <button type="button" id="sa-pick" class="link">pick a file</button></div>
+    </div>
+    <details>
+      <summary class="muted small">Paste JSON</summary>
+      <textarea id="sa-textarea" class="sa-text" rows="6" placeholder='{ "type": "service_account", ... }'></textarea>
+    </details>
+    <div id="sa-status" class="sa-status muted small"></div>
+    <input id="sa-file-input" type="file" accept="application/json,.json" hidden>
+    <footer>
+      <button type="button" id="sa-logout" class="ghost">Use demo data</button>
+      <span style="flex: 1"></span>
+      <button type="button" id="sa-submit" class="primary">Authenticate</button>
+      <button class="ghost" type="submit" value="close">Cancel</button>
+    </footer>
+  </form>
+</dialog>
 
 <dialog id="object-dialog">
   <form method="dialog" class="dialog-card">

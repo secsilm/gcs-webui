@@ -120,6 +120,78 @@ def capture():
         page.wait_for_timeout(150)
         _shoot(page, "05-dark-theme.png")
 
+        # back to light for the remaining screenshots
+        page.click("#theme-toggle")
+        page.wait_for_timeout(120)
+
+        # 5b. Credentials dialog (drag SA JSON or paste)
+        page.click("#auth-pill")
+        page.wait_for_selector("#auth-dialog[open]", timeout=3000)
+        # expand the "Paste JSON" section before filling it
+        page.evaluate("document.querySelector('#auth-dialog details').open = true")
+        page.fill("#sa-textarea", (
+            '{\n'
+            '  "type": "service_account",\n'
+            '  "client_email": "ci-readonly@example-prod.iam.gserviceaccount.com",\n'
+            '  "project_id": "example-prod",\n'
+            '  "private_key_id": "abc123…",\n'
+            '  "private_key": "-----BEGIN PRIVATE KEY-----\\n…\\n-----END PRIVATE KEY-----\\n"\n'
+            '}'
+        ))
+        page.evaluate("document.getElementById('sa-status').textContent = 'parsed · 5 fields detected'")
+        page.wait_for_timeout(150)
+        _shoot(page, "07-credentials-dialog.png")
+        page.evaluate("document.getElementById('auth-dialog').close()")
+
+        # 5c. Drag-drop overlay simulation — set the overlay visible to capture it
+        page.evaluate("""
+            const o = document.getElementById('drop-overlay');
+            o.classList.remove('hidden');
+            document.getElementById('drop-target-label').textContent =
+                'to gs://demo-static-assets/web/';
+        """)
+        page.wait_for_timeout(100)
+        _shoot(page, "08-drag-drop-overlay.png")
+        page.evaluate("document.getElementById('drop-overlay').classList.add('hidden')")
+
+        # 5d. Trigger an upload via API + render an in-progress toast
+        page.evaluate("""async () => {
+            const stack = document.getElementById('toast-stack');
+            const make = (name, pct, status='info') => {
+                const t = document.createElement('div');
+                t.className = 'toast ' + status;
+                t.innerHTML = `
+                    <span class="name">${name}</span>
+                    <span class="pct">${status === 'ok' ? 'done' : pct + '%'}</span>
+                    <div class="progress"><span style="width:${pct}%"></span></div>`;
+                stack.appendChild(t);
+            };
+            make('release-notes.md', 100, 'ok');
+            make('build-artifact.tar.gz', 64);
+            make('config.yaml', 28);
+        }""")
+        # Also actually upload one file via API to land in fake storage and refresh listing
+        page.evaluate("""async () => {
+            const fd = new FormData();
+            fd.append('bucket', 'demo-static-assets');
+            fd.append('prefix', 'web/');
+            const blob = new Blob(['hello from playwright'], { type: 'text/plain' });
+            fd.append('files', blob, 'release-notes.md');
+            await fetch('/api/object/upload', { method: 'POST', body: fd });
+        }""")
+        # navigate to that prefix to show the uploaded file
+        page.locator("#bucket-list li[data-name='demo-static-assets']").click()
+        page.wait_for_timeout(300)
+        page.evaluate("""
+            const folder = [...document.querySelectorAll('#rows .row')]
+                .find(r => r.textContent.includes('web'));
+            if (folder) folder.click();
+        """)
+        page.wait_for_timeout(400)
+        _shoot(page, "09-upload-progress.png")
+        # clear any toasts before the next screenshot
+        page.evaluate("document.getElementById('toast-stack').innerHTML = ''")
+
         # 6. Large listing — back to logs, scroll to load >1000 rows
         page.click("#theme-toggle")  # back to light
         page.locator("#bucket-list li[data-name='demo-app-logs']").click()

@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 import random
 from datetime import datetime, timedelta, timezone
-from typing import Iterator, Optional
+from typing import BinaryIO, Iterator, Optional
 
 from .storage import BucketInfo, ListPage, ObjectInfo
 
@@ -132,6 +132,9 @@ class FakeStorage:
     """Minimal in-memory implementation of the Storage protocol."""
 
     backend = "fake"
+    identity = "demo"
+    project = "demo-project"
+    read_only = False
 
     def list_buckets(self) -> list[BucketInfo]:
         return list(_BUCKET_META.values())
@@ -187,3 +190,18 @@ class FakeStorage:
 
     def signed_url(self, bucket: str, name: str, expires_seconds: int = 3600) -> Optional[str]:
         return None
+
+    def upload_object(self, bucket, name, stream, content_type=None):
+        if bucket not in _DATA:
+            raise KeyError(f"bucket {bucket} not found")
+        data = stream.read()
+        info = ObjectInfo(
+            name=name,
+            size=len(data),
+            updated=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+            content_type=content_type or "application/octet-stream",
+            etag=hashlib.md5(data).hexdigest(),
+            generation=int(datetime.now(timezone.utc).timestamp() * 1_000_000),
+        )
+        _DATA[bucket][name] = info
+        return info

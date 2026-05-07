@@ -66,9 +66,26 @@ async function api(path, params) {
 
 async function loadInfo() {
   const info = await api("/api/info");
+  state.info = info;
   const badge = $("#backend-badge");
   badge.textContent = info.demo ? "Demo data" : "Live · GCS";
   badge.style.color = info.demo ? "var(--text-faint)" : "var(--accent)";
+
+  const pill = $("#auth-pill");
+  const text = $("#auth-text");
+  if (info.session_authenticated) {
+    pill.dataset.mode = "auth";
+    text.textContent = info.identity || info.project || "authenticated";
+    pill.title = `Authenticated as ${info.identity || "?"} · click to switch`;
+  } else if (!info.demo) {
+    pill.dataset.mode = "env";
+    text.textContent = "env credentials";
+    pill.title = "Using server-side credentials · click to override";
+  } else {
+    pill.dataset.mode = "demo";
+    text.textContent = "demo data · sign in";
+    pill.title = "Click to upload a service account";
+  }
 }
 
 async function loadBuckets() {
@@ -284,9 +301,231 @@ function setupTheme() {
   });
 }
 
+function showToast({ name, status = "info", text = "" }) {
+  const stack = $("#toast-stack");
+  const el = document.createElement("div");
+  el.className = "toast " + status;
+  el.innerHTML = `
+    <span class="name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
+    <span class="pct">${escapeHtml(text)}</span>
+    <div class="progress"><span></span></div>
+  `;
+  stack.appendChild(el);
+  return {
+    el,
+    update(pct, statusText) {
+      const bar = el.querySelector(".progress span");
+      if (bar) bar.style.width = pct + "%";
+      el.querySelector(".pct").textContent = statusText ?? `${pct}%`;
+    },
+    finish(s) {
+      el.classList.remove("info", "error", "ok");
+      el.classList.add(s);
+      setTimeout(() => el.remove(), s === "error" ? 6000 : 2400);
+    },
+  };
+}
+
+function uploadFiles(fileList) {
+  if (!state.bucket || !fileList || !fileList.length) return;
+  const bucket = state.bucket;
+  const prefix = state.prefix;
+  const files = Array.from(fileList);
+
+  let pending = files.length;
+  const onAllDone = () => {
+    if (pending === 0) loadObjects(true);
+  };
+
+  for (const f of files) {
+    const toast = showToast({ name: f.name, text: "0%" });
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/object/upload");
+    xhr.upload.addEventListener("progress", (ev) => {
+      if (ev.lengthComputable) {
+        const pct = Math.round((ev.loaded / ev.total) * 100);
+        toast.update(pct);
+      }
+    });
+    xhr.addEventListener("load", () => {
+      pending--;
+      if (xhr.status >= 200 && xhr.status < 300) {
+        toast.update(100, "done");
+        toast.finish("ok");
+      } else {
+        let msg = "upload failed";
+        try { msg = JSON.parse(xhr.responseText).detail || msg; } catch {}
+        toast.update(0, msg);
+        toast.finish("error");
+      }
+      onAllDone();
+    });
+    xhr.addEventListener("error", () => {
+      pending--;
+      toast.update(0, "network error");
+      toast.finish("error");
+      onAllDone();
+    });
+    const fd = new FormData();
+    fd.append("bucket", bucket);
+    fd.append("prefix", prefix);
+    fd.append("files", f, f.name);
+    xhr.send(fd);
+  }
+}
+
+function setupDragAndDrop() {
+  const overlay = $("#drop-overlay");
+  const label = $("#drop-target-label");
+  let depth = 0;
+  const isFileDrag = (ev) =>
+    ev.dataTransfer && Array.from(ev.dataTransfer.types || []).includes("Files");
+
+  window.addEventListener("dragenter", (ev) => {
+    if (!isFileDrag(ev)) return;
+    ev.preventDefault();
+    depth++;
+    if (state.bucket) {
+      overlay.classList.remove("hidden");
+      label.textContent = `to gs://${state.bucket}/${state.prefix}`;
+    }
+  });
+  window.addEventListener("dragover", (ev) => {
+    if (!isFileDrag(ev)) return;
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = "copy";
+  });
+  window.addEventListener("dragleave", (ev) => {
+    if (!isFileDrag(ev)) return;
+    depth = Math.max(0, depth - 1);
+    if (depth === 0) overlay.classList.add("hidden");
+  });
+  window.addEventListener("drop", (ev) => {
+    if (!isFileDrag(ev)) return;
+    ev.preventDefault();
+    depth = 0;
+    overlay.classList.add("hidden");
+    if (!state.bucket) return;
+    uploadFiles(ev.dataTransfer.files);
+  });
+}
+
+function setupUploadButton() {
+  const btn = $("#upload-btn");
+  const input = $("#upload-input");
+  btn.addEventListener("click", () => input.click());
+  input.addEventListener("change", () => {
+    uploadFiles(input.files);
+    input.value = "";
+  });
+}
+
+function setupAuthDialog() {
+  const dlg = $("#auth-dialog");
+  const drop = $("#sa-drop");
+  const fileInput = $("#sa-file-input");
+  const textarea = $("#sa-textarea");
+  const status = $("#sa-status");
+  const submit = $("#sa-submit");
+  const logout = $("#sa-logout");
+  const pick = $("#sa-pick");
+
+  let pendingFile = null;
+
+  const reset = () => {
+    pendingFile = null;
+    textarea.value = "";
+    status.textContent = "";
+    status.classList.remove("error", "ok");
+    drop.classList.remove("error", "dragover");
+    drop.querySelector("div").textContent = "Drop SA JSON here";
+  };
+
+  const setFile = (file) => {
+    pendingFile = file;
+    drop.querySelector("div").textContent = file.name;
+    status.textContent = `${(file.size / 1024).toFixed(1)} KB selected`;
+    status.classList.remove("error");
+  };
+
+  $("#auth-pill").addEventListener("click", () => {
+    reset();
+    if (typeof dlg.showModal === "function") dlg.showModal();
+  });
+
+  ["dragenter", "dragover"].forEach((t) =>
+    drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("dragover"); })
+  );
+  ["dragleave", "drop"].forEach((t) =>
+    drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("dragover"); })
+  );
+  drop.addEventListener("drop", (e) => {
+    const f = e.dataTransfer.files[0];
+    if (f) setFile(f);
+  });
+  drop.addEventListener("click", (e) => {
+    if (e.target.closest("button")) return;
+    fileInput.click();
+  });
+  pick.addEventListener("click", () => fileInput.click());
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files[0]) setFile(fileInput.files[0]);
+  });
+
+  submit.addEventListener("click", async () => {
+    let body;
+    let headers = {};
+    if (pendingFile) {
+      const fd = new FormData();
+      fd.append("file", pendingFile, pendingFile.name);
+      body = fd;
+    } else if (textarea.value.trim()) {
+      body = textarea.value;
+      headers["Content-Type"] = "application/json";
+    } else {
+      status.textContent = "Pick a file or paste JSON first";
+      status.classList.add("error");
+      return;
+    }
+    submit.disabled = true;
+    try {
+      const r = await fetch("/api/auth/sa", { method: "POST", body, headers });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
+      status.textContent = `Signed in as ${data.identity}`;
+      status.classList.add("ok");
+      setTimeout(async () => {
+        dlg.close();
+        await refreshAll();
+      }, 350);
+    } catch (e) {
+      status.textContent = e.message;
+      status.classList.add("error");
+    } finally {
+      submit.disabled = false;
+    }
+  });
+
+  logout.addEventListener("click", async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    dlg.close();
+    await refreshAll();
+  });
+}
+
+async function refreshAll() {
+  state.bucket = null;
+  state.prefix = "";
+  await loadInfo();
+  await loadBuckets();
+}
+
 async function init() {
   setupSearch();
   setupTheme();
+  setupDragAndDrop();
+  setupUploadButton();
+  setupAuthDialog();
   $("#refresh").addEventListener("click", () => loadObjects(true));
   observer.observe($("#sentinel"));
   await loadInfo();

@@ -7,7 +7,7 @@ from __future__ import annotations
 import datetime as _dt
 import json
 import os
-from typing import Iterator, Optional
+from typing import BinaryIO, Iterator, Optional
 
 from .storage import BucketInfo, ListPage, ObjectInfo
 
@@ -24,24 +24,36 @@ class GcsStorage:
     """Storage implementation backed by google-cloud-storage."""
 
     backend = "gcs"
+    read_only = False
 
-    def __init__(self, client):
+    def __init__(self, client, identity: Optional[str] = None, project: Optional[str] = None):
         self._client = client
+        self.identity = identity
+        self.project = project or getattr(client, "project", None)
 
     @classmethod
     def from_env(cls) -> "GcsStorage":
-        from google.cloud import storage as gcs  # local import keeps fake mode dep-free
-        from google.oauth2 import service_account
-
         json_blob = os.environ.get("GCS_SA_JSON")
         if json_blob:
-            info = json.loads(json_blob)
-            creds = service_account.Credentials.from_service_account_info(info)
-            project = info.get("project_id")
-            return cls(gcs.Client(project=project, credentials=creds))
-
+            return cls.from_service_account_info(json.loads(json_blob))
         # else rely on GOOGLE_APPLICATION_CREDENTIALS / ADC
+        from google.cloud import storage as gcs
         return cls(gcs.Client())
+
+    @classmethod
+    def from_service_account_info(cls, info: dict) -> "GcsStorage":
+        if not isinstance(info, dict) or "client_email" not in info or "private_key" not in info:
+            raise ValueError("not a service account JSON: missing client_email/private_key")
+        from google.cloud import storage as gcs
+        from google.oauth2 import service_account
+
+        creds = service_account.Credentials.from_service_account_info(info)
+        project = info.get("project_id")
+        return cls(
+            gcs.Client(project=project, credentials=creds),
+            identity=info.get("client_email"),
+            project=project,
+        )
 
     def list_buckets(self) -> list[BucketInfo]:
         return [
@@ -124,3 +136,23 @@ class GcsStorage:
             )
         except Exception:
             return None
+
+    def upload_object(
+        self,
+        bucket: str,
+        name: str,
+        stream: BinaryIO,
+        content_type: Optional[str] = None,
+    ) -> ObjectInfo:
+        blob = self._client.bucket(bucket).blob(name)
+        blob.upload_from_file(stream, content_type=content_type, rewind=False)
+        blob.reload()
+        return ObjectInfo(
+            name=blob.name,
+            size=blob.size or 0,
+            updated=_to_iso(blob.updated),
+            content_type=blob.content_type,
+            etag=blob.etag,
+            generation=blob.generation,
+            md5_hash=blob.md5_hash,
+        )

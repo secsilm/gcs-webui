@@ -22,11 +22,17 @@
 
 支持三种加载方式，按优先级：
 
-1. 环境变量 `GOOGLE_APPLICATION_CREDENTIALS` 指向已挂载的 JSON（推荐生产）。
-2. 环境变量 `GCS_SA_JSON` 直接保存完整 JSON 字符串（适合 K8s Secret）。
-3. 启动后由用户在 UI 上粘贴 / 上传（仅保留在内存，不落盘）。
+1. **运行时切换**：用户点击右上角的"凭据徽章"，可拖拽 / 选择 / 粘贴 SA JSON，本浏览器会话立即换用该凭据。
+2. 环境变量 `GOOGLE_APPLICATION_CREDENTIALS` 指向已挂载的 JSON（默认凭据 / 服务级别）。
+3. 环境变量 `GCS_SA_JSON` 直接保存完整 JSON 字符串（适合 K8s Secret）。
 
-设计上严格只读凭据：UI 不会把凭据再回显给浏览器。
+#### 多租户隔离
+
+* 每个浏览器分配一个 `gcs_webui_sid` cookie（`HttpOnly` + `SameSite=Lax`，24 小时有效）。
+* 服务端 `SessionRegistry`（`app/sessions.py`）把 sid 映射到一个 `Session`，里面持有该会话独享的 `GcsStorage`（含独立的 `google.cloud.storage.Client`）。
+* 默认上限 64 个会话，闲置 24h 自动清理；超出走 LRU 淘汰。
+* 凭据 **只在内存中**存在，永远不落盘，不通过 API 回显，注销 (`POST /api/auth/logout`) 即清空。
+* 未上传 SA 的会话回退到启动时配置的默认 storage（env 凭据或 demo）；不同会话之间彼此完全独立——A 上传 SA 不会影响 B。
 
 ### 2. 浏览体验
 
@@ -51,8 +57,15 @@
 
 目标 Chrome（含 Chromium 衍生）。使用的特性：CSS Grid、`IntersectionObserver`、`fetch`、ES2020 模块——全部在 Chrome 90+ 原生可用。
 
+### 6. 上传
+
+* `POST /api/object/upload`（multipart/form-data，字段 `bucket`、`prefix`、`files[]`）。
+* 浏览器端用 `XMLHttpRequest` 监听 `progress` 事件，显示每个文件的进度 toast；完成后自动刷新当前列表。
+* 拖拽：监听 `window` 的 `dragenter / dragover / drop`，整页覆盖半透明指示层；文件落点区域不限，目标 = 当前 bucket + prefix。
+* 删除 / 重命名仍未实现（保持只读以外的最小写面）。
+
 ## 不做的事
 
-* **不做写操作**（删除 / 重命名 / 上传）：开发者最常见的诉求是"看一眼线上文件"，写操作风险高且会显著扩大依赖；后续可作为 opt-in 模块加入。
+* **不做删除 / 重命名**：高风险且需要更多 UI 状态；后续可作为 opt-in 模块加入。
 * **不做用户系统 / RBAC**：依赖 service account 本身的权限粒度。
 * **不做服务端模板**：前端完全静态，后端只暴露 JSON API。
