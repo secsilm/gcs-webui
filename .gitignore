@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+.DS_Store
+sa.json
+*.local.json
+node_modules/
+.coverage
