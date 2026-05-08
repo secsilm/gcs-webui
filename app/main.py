@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from dataclasses import asdict
 from pathlib import Path
 from typing import Optional
@@ -33,14 +34,39 @@ def _make_default_storage() -> Optional[Storage]:
 
     Demo mode and env credentials are opt-in. By default the app has no
     server-side storage, and every user must sign in via the UI.
+
+    If env credentials are configured but cannot be loaded (e.g. the JSON
+    file isn't mounted), log a warning and continue with no default —
+    crashing at boot would mask the problem and prevent users from signing
+    in via the UI.
     """
     if os.environ.get("GCS_DEMO_MODE") == "1":
         from .fake_storage import FakeStorage
         return FakeStorage()
-    if os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") or os.environ.get("GCS_SA_JSON"):
+
+    sa_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") or ""
+    sa_json = os.environ.get("GCS_SA_JSON") or ""
+    if not sa_path and not sa_json:
+        return None
+
+    if sa_path and not Path(sa_path).is_file():
+        print(
+            f"gcs-webui: GOOGLE_APPLICATION_CREDENTIALS={sa_path!r} does not exist; "
+            f"continuing without a default storage. Users can still sign in via the UI.",
+            file=sys.stderr,
+        )
+        return None
+
+    try:
         from .gcs_storage import GcsStorage
         return GcsStorage.from_env()
-    return None
+    except Exception as e:
+        print(
+            f"gcs-webui: failed to initialise default GCS storage: {e}; "
+            f"continuing without a default. Users can still sign in via the UI.",
+            file=sys.stderr,
+        )
+        return None
 
 
 def _http_status_from_gcs(exc: Exception) -> Optional[int]:

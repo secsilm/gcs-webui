@@ -25,13 +25,19 @@ services:
     ports:
       - "8080:8080"
     environment:
-      # Path inside the container to the mounted SA JSON. Ignored if you set
-      # GCS_SA_JSON instead.
-      GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-/secrets/sa.json}
+      # Both default to empty so the app starts in "no default credentials"
+      # mode and lets every user sign in via the UI. Override either from
+      # your shell or a .env file to provide a server-side fallback SA:
+      #
+      #   # path inside the container to a mounted JSON file
+      #   GOOGLE_APPLICATION_CREDENTIALS=/secrets/sa.json docker compose up
+      #
+      #   # or pass the JSON contents directly (e.g. from a secret manager)
+      #   GCS_SA_JSON="$(cat sa.json)" docker compose up
+      GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-}
       GCS_SA_JSON: ${GCS_SA_JSON:-}
-    # Mount the SA file read-only. Remove this block if you don't want a
-    # server-side fallback (every user must sign in via the UI), or if you use
-    # GCS_SA_JSON exclusively.
+    # If you set GOOGLE_APPLICATION_CREDENTIALS to a path inside the container,
+    # mount the corresponding host file here. Uncomment and adjust:
     # volumes:
     #   - ./sa.json:/secrets/sa.json:ro
     read_only: true

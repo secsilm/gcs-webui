@@ -168,6 +168,26 @@ def test_default_available_flag_when_demo_storage():
     _run(_())
 
 
+def test_missing_sa_file_does_not_crash_startup(monkeypatch):
+    """If GOOGLE_APPLICATION_CREDENTIALS points to a non-existent file the app
+    must still start and report needs_credentials, instead of raising at boot."""
+    from app import main as main_module
+    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "/nonexistent/sa.json")
+    monkeypatch.delenv("GCS_SA_JSON", raising=False)
+    monkeypatch.delenv("GCS_DEMO_MODE", raising=False)
+    storage = main_module._make_default_storage()
+    assert storage is None  # gracefully fell back
+
+    app = main_module.create_app()
+    t = httpx.ASGITransport(app=app)
+
+    async def _():
+        async with httpx.AsyncClient(transport=t, base_url="http://test") as c:
+            data = (await c.get("/api/info")).json()
+            assert data["needs_credentials"] is True
+    _run(_())
+
+
 def test_backend_403_propagates_to_http():
     """A storage that raises a Forbidden-like exception surfaces as HTTP 403."""
     class Forbidden(Exception):
