@@ -138,7 +138,7 @@ def capture():
             '  "private_key": "-----BEGIN PRIVATE KEY-----\\n…\\n-----END PRIVATE KEY-----\\n"\n'
             '}'
         ))
-        page.evaluate("document.getElementById('sa-status').textContent = 'parsed · 5 fields detected'")
+        page.evaluate("document.getElementById('sa-status').textContent = '已解析 · 检测到 5 个字段'")
         page.wait_for_timeout(150)
         _shoot(page, "07-credentials-dialog.png")
         page.evaluate("document.getElementById('auth-dialog').close()")
@@ -148,7 +148,7 @@ def capture():
             const o = document.getElementById('drop-overlay');
             o.classList.remove('hidden');
             document.getElementById('drop-target-label').textContent =
-                'to gs://demo-static-assets/web/';
+                '上传到 gs://demo-static-assets/web/';
         """)
         page.wait_for_timeout(100)
         _shoot(page, "08-drag-drop-overlay.png")
@@ -162,7 +162,7 @@ def capture():
                 t.className = 'toast ' + status;
                 t.innerHTML = `
                     <span class="name">${name}</span>
-                    <span class="pct">${status === 'ok' ? 'done' : pct + '%'}</span>
+                    <span class="pct">${status === 'ok' ? '完成' : pct + '%'}</span>
                     <div class="progress"><span style="width:${pct}%"></span></div>`;
                 stack.appendChild(t);
             };
@@ -250,12 +250,17 @@ def capture():
                     frag.appendChild(row);
                 }
                 tbody.appendChild(frag);
-                document.getElementById('stat-folders').textContent = '0 folders';
-                document.getElementById('stat-files').textContent = rows.length.toLocaleString() + ' files';
+                document.getElementById('stat-folders').textContent = '0 个文件夹';
+                document.getElementById('stat-files').textContent = rows.length.toLocaleString() + ' 个文件';
             }"""
         )
         page.wait_for_timeout(200)
         _shoot(page, "06-large-listing.png")
+
+        # 7. English mode — flip the language toggle to show parity with zh
+        page.click("#lang-toggle")
+        page.wait_for_timeout(150)
+        _shoot(page, "10-english-toggle.png")
 
         browser.close()
     print("done.")

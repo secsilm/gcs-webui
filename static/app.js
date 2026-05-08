@@ -1,10 +1,162 @@
 // gcs-webui frontend. Vanilla JS, no build step.
 
+const I18N = {
+  zh: {
+    loading: "加载中…",
+    buckets: "存储桶",
+    theme: "主题",
+    docs: "文档",
+    upload: "上传",
+    refresh: "刷新",
+    col_name: "名称",
+    col_size: "大小",
+    col_modified: "修改时间",
+    col_type: "类型",
+    empty: "该路径下暂无对象。",
+    drop_title: "拖拽文件以上传",
+    drop_target_default: "上传到 gs://…",
+    drop_target_to: "上传到 gs://{path}",
+    auth_title: "Service Account 凭据",
+    auth_help: "拖拽一个 Google Cloud service account .json 文件，或粘贴其内容、从磁盘选择。凭据仅保存在本会话内存中，永不写入磁盘。",
+    sa_drop_default: "将 SA JSON 拖到此处",
+    or: "或",
+    pick_file: "选择文件",
+    paste_json: "粘贴 JSON",
+    use_demo: "使用演示数据",
+    authenticate: "登录",
+    cancel: "取消",
+    close: "关闭",
+    download: "下载",
+    detail_bucket: "存储桶",
+    detail_size: "大小",
+    detail_type: "类型",
+    detail_updated: "更新时间",
+    detail_generation: "版本号",
+    detail_etag: "ETag",
+    backend_demo: "演示数据",
+    backend_live: "实时 · GCS",
+    pill_demo: "演示数据 · 登录",
+    pill_env: "环境凭据",
+    pill_demo_title: "点击以上传 service account",
+    pill_env_title: "正在使用服务端凭据，点击可覆盖",
+    pill_auth_title: "已登录 {who} · 点击可切换",
+    auth_pill_title: "切换 Service Account",
+    theme_title: "切换主题",
+    lang_title: "切换语言",
+    upload_title: "上传文件（也可拖入页面任意位置）",
+    refresh_title: "刷新",
+    search_placeholder: "按名称过滤…",
+    folders_n: "{n} 个文件夹",
+    files_n: "{n} 个文件",
+    folder_type: "文件夹",
+    just_now: "刚刚",
+    min_ago: "{n} 分钟前",
+    h_ago: "{n} 小时前",
+    d_ago: "{n} 天前",
+    bytes_n: "{n} 字节",
+    toast_done: "完成",
+    toast_failed: "上传失败",
+    toast_net_err: "网络错误",
+    pick_or_paste: "请先选择文件或粘贴 JSON",
+    signed_in_as: "已登录：{who}",
+    selected_size: "已选择 {kb} KB",
+    download_failed: "下载失败：{msg}",
+  },
+  en: {
+    loading: "loading…",
+    buckets: "Buckets",
+    theme: "Theme",
+    docs: "Docs",
+    upload: "Upload",
+    refresh: "Refresh",
+    col_name: "Name",
+    col_size: "Size",
+    col_modified: "Last modified",
+    col_type: "Type",
+    empty: "No objects in this prefix.",
+    drop_title: "Drop files to upload",
+    drop_target_default: "to gs://…",
+    drop_target_to: "to gs://{path}",
+    auth_title: "Service account credentials",
+    auth_help: "Drop a Google Cloud service account .json file, paste its contents, or pick from disk. Credentials are kept in memory for this session only and are never written to disk.",
+    sa_drop_default: "Drop SA JSON here",
+    or: "or",
+    pick_file: "pick a file",
+    paste_json: "Paste JSON",
+    use_demo: "Use demo data",
+    authenticate: "Authenticate",
+    cancel: "Cancel",
+    close: "Close",
+    download: "Download",
+    detail_bucket: "Bucket",
+    detail_size: "Size",
+    detail_type: "Type",
+    detail_updated: "Updated",
+    detail_generation: "Generation",
+    detail_etag: "ETag",
+    backend_demo: "Demo data",
+    backend_live: "Live · GCS",
+    pill_demo: "demo data · sign in",
+    pill_env: "env credentials",
+    pill_demo_title: "Click to upload a service account",
+    pill_env_title: "Using server-side credentials · click to override",
+    pill_auth_title: "Authenticated as {who} · click to switch",
+    auth_pill_title: "Switch service account",
+    theme_title: "Toggle theme",
+    lang_title: "Switch language",
+    upload_title: "Upload files (or drop them anywhere)",
+    refresh_title: "Reload",
+    search_placeholder: "Filter by name…",
+    folders_n: "{n} folders",
+    files_n: "{n} files",
+    folder_type: "folder",
+    just_now: "just now",
+    min_ago: "{n} min ago",
+    h_ago: "{n} h ago",
+    d_ago: "{n} d ago",
+    bytes_n: "{n} bytes",
+    toast_done: "done",
+    toast_failed: "upload failed",
+    toast_net_err: "network error",
+    pick_or_paste: "Pick a file or paste JSON first",
+    signed_in_as: "Signed in as {who}",
+    selected_size: "{kb} KB selected",
+    download_failed: "Download failed: {msg}",
+  },
+};
+
+let lang = localStorage.getItem("gcs-webui-lang") || "zh";
+
+function t(key, vars) {
+  let s = (I18N[lang] && I18N[lang][key]) || I18N.zh[key] || key;
+  if (vars) for (const [k, v] of Object.entries(vars)) s = s.replace("{" + k + "}", v);
+  return s;
+}
+
+function applyStaticI18n() {
+  document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+  document.title = lang === "zh" ? "GCS 浏览器" : "GCS Browser";
+  for (const el of document.querySelectorAll("[data-i18n]")) {
+    el.textContent = t(el.dataset.i18n);
+  }
+  for (const el of document.querySelectorAll("[data-i18n-placeholder]")) {
+    el.placeholder = t(el.dataset.i18nPlaceholder);
+  }
+  for (const el of document.querySelectorAll("[data-i18n-title]")) {
+    el.title = t(el.dataset.i18nTitle);
+  }
+  for (const el of document.querySelectorAll("[data-i18n-aria-label]")) {
+    el.setAttribute("aria-label", t(el.dataset.i18nAriaLabel));
+  }
+  const ll = document.getElementById("lang-label");
+  if (ll) ll.textContent = lang === "zh" ? "EN" : "中";
+}
+
 const state = {
   buckets: [],
   bucket: null,
   prefix: "",
-  rows: [],            // ObjectInfo from API
+  rows: [],
   nextPageToken: null,
   loading: false,
   filter: "",
@@ -26,10 +178,10 @@ const fmtDate = (iso) => {
   const d = new Date(iso);
   if (isNaN(d)) return "—";
   const diff = (Date.now() - d.getTime()) / 1000;
-  if (diff < 60) return "just now";
-  if (diff < 3600) return Math.floor(diff / 60) + " min ago";
-  if (diff < 86400) return Math.floor(diff / 3600) + " h ago";
-  if (diff < 86400 * 30) return Math.floor(diff / 86400) + " d ago";
+  if (diff < 60) return t("just_now");
+  if (diff < 3600) return t("min_ago", { n: Math.floor(diff / 60) });
+  if (diff < 86400) return t("h_ago", { n: Math.floor(diff / 3600) });
+  if (diff < 86400 * 30) return t("d_ago", { n: Math.floor(diff / 86400) });
   return d.toISOString().slice(0, 10);
 };
 
@@ -68,7 +220,7 @@ async function loadInfo() {
   const info = await api("/api/info");
   state.info = info;
   const badge = $("#backend-badge");
-  badge.textContent = info.demo ? "Demo data" : "Live · GCS";
+  badge.textContent = info.demo ? t("backend_demo") : t("backend_live");
   badge.style.color = info.demo ? "var(--text-faint)" : "var(--accent)";
 
   const pill = $("#auth-pill");
@@ -76,15 +228,15 @@ async function loadInfo() {
   if (info.session_authenticated) {
     pill.dataset.mode = "auth";
     text.textContent = info.identity || info.project || "authenticated";
-    pill.title = `Authenticated as ${info.identity || "?"} · click to switch`;
+    pill.title = t("pill_auth_title", { who: info.identity || "?" });
   } else if (!info.demo) {
     pill.dataset.mode = "env";
-    text.textContent = "env credentials";
-    pill.title = "Using server-side credentials · click to override";
+    text.textContent = t("pill_env");
+    pill.title = t("pill_env_title");
   } else {
     pill.dataset.mode = "demo";
-    text.textContent = "demo data · sign in";
-    pill.title = "Click to upload a service account";
+    text.textContent = t("pill_demo");
+    pill.title = t("pill_demo_title");
   }
 }
 
@@ -165,9 +317,9 @@ function appendRows(items) {
       </div>
       <div class="cell col-size">${it.is_prefix ? "—" : fmtBytes(it.size)}</div>
       <div class="cell col-updated">${it.is_prefix ? "—" : fmtDate(it.updated)}</div>
-      <div class="cell col-type">${it.is_prefix ? "folder" : (it.content_type || "—")}</div>
+      <div class="cell col-type">${it.is_prefix ? t("folder_type") : (it.content_type || "—")}</div>
       <div class="cell col-actions">
-        ${it.is_prefix ? "" : `<button class="icon-btn" data-action="download" title="Download">${ICONS.download}</button>`}
+        ${it.is_prefix ? "" : `<button class="icon-btn" data-action="download" title="${escapeHtml(t("download"))}">${ICONS.download}</button>`}
       </div>
     `;
     row.addEventListener("click", (ev) => {
@@ -230,8 +382,8 @@ function renderStats() {
     if (r.is_prefix) folders++;
     else { files++; size += r.size || 0; }
   }
-  $("#stat-folders").textContent = `${folders.toLocaleString()} folders`;
-  $("#stat-files").textContent = `${files.toLocaleString()} files`;
+  $("#stat-folders").textContent = t("folders_n", { n: folders.toLocaleString() });
+  $("#stat-files").textContent = t("files_n", { n: files.toLocaleString() });
   $("#stat-size").textContent = fmtBytes(size);
 }
 
@@ -250,14 +402,14 @@ function downloadObject(name) {
     document.body.appendChild(a);
     a.click();
     a.remove();
-  }).catch((e) => alert("Download failed: " + e.message));
+  }).catch((e) => alert(t("download_failed", { msg: e.message })));
 }
 
 function openDetails(item) {
   const dlg = $("#object-dialog");
   $("#dlg-name").textContent = item.name;
   $("#dlg-bucket").textContent = state.bucket;
-  $("#dlg-size").textContent = `${fmtBytes(item.size)}  (${item.size?.toLocaleString() ?? "?"} bytes)`;
+  $("#dlg-size").textContent = `${fmtBytes(item.size)}  (${t("bytes_n", { n: item.size?.toLocaleString() ?? "?" })})`;
   $("#dlg-type").textContent = item.content_type || "—";
   $("#dlg-updated").textContent = item.updated || "—";
   $("#dlg-generation").textContent = item.generation ?? "—";
@@ -268,7 +420,6 @@ function openDetails(item) {
   if (typeof dlg.showModal === "function") dlg.showModal();
 }
 
-// infinite scroll
 const observer = new IntersectionObserver((entries) => {
   for (const e of entries) {
     if (e.isIntersecting && state.nextPageToken && !state.loading) {
@@ -279,10 +430,10 @@ const observer = new IntersectionObserver((entries) => {
 
 function setupSearch() {
   const input = $("#search-input");
-  let t;
+  let tm;
   input.addEventListener("input", () => {
-    clearTimeout(t);
-    t = setTimeout(() => {
+    clearTimeout(tm);
+    tm = setTimeout(() => {
       state.filter = input.value.trim().toLowerCase();
       $("#rows").innerHTML = "";
       appendRows(state.rows);
@@ -298,6 +449,18 @@ function setupTheme() {
     const next = cur === "light" ? "dark" : "light";
     document.documentElement.setAttribute("data-theme", next);
     localStorage.setItem("gcs-webui-theme", next);
+  });
+}
+
+function setupLanguageToggle() {
+  $("#lang-toggle").addEventListener("click", async () => {
+    lang = lang === "zh" ? "en" : "zh";
+    localStorage.setItem("gcs-webui-lang", lang);
+    applyStaticI18n();
+    await loadInfo();
+    renderStats();
+    $("#rows").innerHTML = "";
+    appendRows(state.rows);
   });
 }
 
@@ -350,10 +513,10 @@ function uploadFiles(fileList) {
     xhr.addEventListener("load", () => {
       pending--;
       if (xhr.status >= 200 && xhr.status < 300) {
-        toast.update(100, "done");
+        toast.update(100, t("toast_done"));
         toast.finish("ok");
       } else {
-        let msg = "upload failed";
+        let msg = t("toast_failed");
         try { msg = JSON.parse(xhr.responseText).detail || msg; } catch {}
         toast.update(0, msg);
         toast.finish("error");
@@ -362,7 +525,7 @@ function uploadFiles(fileList) {
     });
     xhr.addEventListener("error", () => {
       pending--;
-      toast.update(0, "network error");
+      toast.update(0, t("toast_net_err"));
       toast.finish("error");
       onAllDone();
     });
@@ -387,7 +550,7 @@ function setupDragAndDrop() {
     depth++;
     if (state.bucket) {
       overlay.classList.remove("hidden");
-      label.textContent = `to gs://${state.bucket}/${state.prefix}`;
+      label.textContent = t("drop_target_to", { path: `${state.bucket}/${state.prefix}` });
     }
   });
   window.addEventListener("dragover", (ev) => {
@@ -438,13 +601,13 @@ function setupAuthDialog() {
     status.textContent = "";
     status.classList.remove("error", "ok");
     drop.classList.remove("error", "dragover");
-    drop.querySelector("div").textContent = "Drop SA JSON here";
+    drop.querySelector("div").textContent = t("sa_drop_default");
   };
 
   const setFile = (file) => {
     pendingFile = file;
     drop.querySelector("div").textContent = file.name;
-    status.textContent = `${(file.size / 1024).toFixed(1)} KB selected`;
+    status.textContent = t("selected_size", { kb: (file.size / 1024).toFixed(1) });
     status.classList.remove("error");
   };
 
@@ -453,11 +616,11 @@ function setupAuthDialog() {
     if (typeof dlg.showModal === "function") dlg.showModal();
   });
 
-  ["dragenter", "dragover"].forEach((t) =>
-    drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("dragover"); })
+  ["dragenter", "dragover"].forEach((evt) =>
+    drop.addEventListener(evt, (e) => { e.preventDefault(); drop.classList.add("dragover"); })
   );
-  ["dragleave", "drop"].forEach((t) =>
-    drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("dragover"); })
+  ["dragleave", "drop"].forEach((evt) =>
+    drop.addEventListener(evt, (e) => { e.preventDefault(); drop.classList.remove("dragover"); })
   );
   drop.addEventListener("drop", (e) => {
     const f = e.dataTransfer.files[0];
@@ -483,7 +646,7 @@ function setupAuthDialog() {
       body = textarea.value;
       headers["Content-Type"] = "application/json";
     } else {
-      status.textContent = "Pick a file or paste JSON first";
+      status.textContent = t("pick_or_paste");
       status.classList.add("error");
       return;
     }
@@ -492,7 +655,7 @@ function setupAuthDialog() {
       const r = await fetch("/api/auth/sa", { method: "POST", body, headers });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
-      status.textContent = `Signed in as ${data.identity}`;
+      status.textContent = t("signed_in_as", { who: data.identity });
       status.classList.add("ok");
       setTimeout(async () => {
         dlg.close();
@@ -521,8 +684,10 @@ async function refreshAll() {
 }
 
 async function init() {
+  applyStaticI18n();
   setupSearch();
   setupTheme();
+  setupLanguageToggle();
   setupDragAndDrop();
   setupUploadButton();
   setupAuthDialog();

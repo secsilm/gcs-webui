@@ -9,6 +9,7 @@ something a Python or Java developer can `docker run` in ten seconds.
 * **Drag-and-drop file upload** with per-file progress.
 * Handles 1000+ object listings smoothly (server-side paging + infinite scroll).
 * Per-session credential isolation: two users with different SA files never see each other's state.
+* **中文 / English UI**, defaults to Chinese; toggle from the sidebar.
 * Light / dark theme, keyboard-friendly, Chrome-tested.
 * No build step, no Node, no SPA bundle. Image is < 200 MB.
 

@@ -112,8 +112,10 @@ body {
   padding-top: 8px;
   border-top: 1px solid var(--border);
   margin-top: 8px;
+  flex-wrap: wrap;
 }
-.sidebar-footer .ghost { flex: 1; }
+.sidebar-footer .ghost { flex: 1 1 calc(50% - 3px); justify-content: center; padding: 6px 8px; }
+.sidebar-footer .ghost > span { white-space: nowrap; }
 
 /* main area */
 .main {
