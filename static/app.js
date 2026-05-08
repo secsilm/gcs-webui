@@ -34,7 +34,7 @@ const I18N = {
     detail_generation: "版本号",
     detail_etag: "ETag",
     backend_demo: "演示数据",
-    backend_live: "实时 · GCS",
+    backend_live: "已连接 · GCS",
     pill_demo: "演示数据 · 登录",
     pill_env: "SA 凭据",
     pill_needs: "请登录",
