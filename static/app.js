@@ -36,9 +36,11 @@ const I18N = {
     backend_demo: "演示数据",
     backend_live: "实时 · GCS",
     pill_demo: "演示数据 · 登录",
-    pill_env: "环境凭据",
+    pill_env: "SA 凭据",
+    pill_needs: "请登录",
     pill_demo_title: "点击以上传 service account",
-    pill_env_title: "正在使用服务端凭据，点击可覆盖",
+    pill_env_title: "正在使用 SA 凭据，点击可覆盖",
+    pill_needs_title: "尚未登录，点击以上传 service account",
     pill_auth_title: "已登录 {who} · 点击可切换",
     auth_pill_title: "切换 Service Account",
     theme_title: "切换主题",
@@ -61,6 +63,14 @@ const I18N = {
     signed_in_as: "已登录：{who}",
     selected_size: "已选择 {kb} KB",
     download_failed: "下载失败：{msg}",
+    error_generic: "请求失败",
+    error_401: "尚未登录，请先点击侧边栏凭据胶囊上传 service account",
+    error_403: "权限不足，请检查 service account 是否拥有该 bucket 的 storage.objects.list 等权限",
+    error_404: "bucket 或对象不存在",
+    error_502: "GCS 后端返回错误",
+    auth_needed_title: "请先登录",
+    auth_needed_body: "未配置默认凭据。请上传你自己的 service account JSON 以浏览存储桶。",
+    auth_needed_cta: "上传 service account",
   },
   en: {
     loading: "loading…",
@@ -97,9 +107,11 @@ const I18N = {
     backend_demo: "Demo data",
     backend_live: "Live · GCS",
     pill_demo: "demo data · sign in",
-    pill_env: "env credentials",
+    pill_env: "SA credentials",
+    pill_needs: "Sign in required",
     pill_demo_title: "Click to upload a service account",
-    pill_env_title: "Using server-side credentials · click to override",
+    pill_env_title: "Using SA credentials · click to override",
+    pill_needs_title: "Not signed in — click to upload a service account",
     pill_auth_title: "Authenticated as {who} · click to switch",
     auth_pill_title: "Switch service account",
     theme_title: "Toggle theme",
@@ -122,6 +134,14 @@ const I18N = {
     signed_in_as: "Signed in as {who}",
     selected_size: "{kb} KB selected",
     download_failed: "Download failed: {msg}",
+    error_generic: "Request failed",
+    error_401: "Not signed in. Click the credentials pill in the sidebar to upload a service account.",
+    error_403: "Permission denied — verify the service account has storage.objects.list (and friends) on this bucket.",
+    error_404: "Bucket or object not found.",
+    error_502: "GCS backend returned an error.",
+    auth_needed_title: "Sign in required",
+    auth_needed_body: "No default credentials are configured. Upload your service account JSON to browse buckets.",
+    auth_needed_cta: "Upload service account",
   },
 };
 
@@ -212,20 +232,52 @@ async function api(path, params) {
     }
   }
   const res = await fetch(url, { headers: { Accept: "application/json" } });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) {
+    let detail = res.statusText;
+    try { const j = await res.json(); detail = j.detail || detail; } catch {}
+    const err = new Error(detail);
+    err.status = res.status;
+    throw err;
+  }
   return res.json();
+}
+
+function showError(err) {
+  const banner = $("#error-banner");
+  const status = err && err.status;
+  const key = status === 401 ? "error_401"
+    : status === 403 ? "error_403"
+    : status === 404 ? "error_404"
+    : status === 502 ? "error_502"
+    : "error_generic";
+  banner.querySelector(".error-title").textContent = t(key);
+  banner.querySelector(".error-detail").textContent = err && err.message ? err.message : "";
+  banner.classList.remove("hidden");
+}
+
+function hideError() {
+  $("#error-banner").classList.add("hidden");
 }
 
 async function loadInfo() {
   const info = await api("/api/info");
   state.info = info;
   const badge = $("#backend-badge");
-  badge.textContent = info.demo ? t("backend_demo") : t("backend_live");
-  badge.style.color = info.demo ? "var(--text-faint)" : "var(--accent)";
+  if (info.needs_credentials) {
+    badge.textContent = t("pill_needs");
+    badge.style.color = "#d93025";
+  } else {
+    badge.textContent = info.demo ? t("backend_demo") : t("backend_live");
+    badge.style.color = info.demo ? "var(--text-faint)" : "var(--accent)";
+  }
 
   const pill = $("#auth-pill");
   const text = $("#auth-text");
-  if (info.session_authenticated) {
+  if (info.needs_credentials) {
+    pill.dataset.mode = "needs";
+    text.textContent = t("pill_needs");
+    pill.title = t("pill_needs_title");
+  } else if (info.session_authenticated) {
     pill.dataset.mode = "auth";
     text.textContent = info.identity || info.project || "authenticated";
     pill.title = t("pill_auth_title", { who: info.identity || "?" });
@@ -238,10 +290,25 @@ async function loadInfo() {
     text.textContent = t("pill_demo");
     pill.title = t("pill_demo_title");
   }
+
+  // Hide "use demo data" / logout button when there's no default to fall back to.
+  const logoutBtn = $("#sa-logout");
+  if (logoutBtn) logoutBtn.classList.toggle("hidden", !info.default_available);
 }
 
 async function loadBuckets() {
-  state.buckets = await api("/api/buckets");
+  if (state.info && state.info.needs_credentials) {
+    showAuthNeeded();
+    return;
+  }
+  hideAuthNeeded();
+  try {
+    state.buckets = await api("/api/buckets");
+  } catch (e) {
+    if (e.status === 401) { showAuthNeeded(); return; }
+    showError(e);
+    return;
+  }
   const ul = $("#bucket-list");
   ul.innerHTML = "";
   for (const b of state.buckets) {
@@ -262,6 +329,18 @@ async function loadBuckets() {
   }
 }
 
+function showAuthNeeded() {
+  $("#auth-needed").classList.remove("hidden");
+  $("#bucket-list").innerHTML = "";
+  $("#rows").innerHTML = "";
+  $("#empty").classList.add("hidden");
+  hideError();
+}
+
+function hideAuthNeeded() {
+  $("#auth-needed").classList.add("hidden");
+}
+
 function selectBucket(name) {
   state.bucket = name;
   state.prefix = "";
@@ -278,6 +357,7 @@ async function loadObjects(reset) {
     state.rows = [];
     state.nextPageToken = null;
     $("#rows").innerHTML = "";
+    hideError();
   }
 
   try {
@@ -294,7 +374,9 @@ async function loadObjects(reset) {
     renderStats();
     $("#empty").classList.toggle("hidden", state.rows.length > 0);
   } catch (e) {
-    console.error(e);
+    if (e.status === 401) { showAuthNeeded(); return; }
+    showError(e);
+    renderBreadcrumbs();
   } finally {
     state.loading = false;
   }
@@ -692,6 +774,8 @@ async function init() {
   setupUploadButton();
   setupAuthDialog();
   $("#refresh").addEventListener("click", () => loadObjects(true));
+  $("#error-dismiss").addEventListener("click", hideError);
+  $("#auth-needed-btn").addEventListener("click", () => $("#auth-pill").click());
   observer.observe($("#sentinel"));
   await loadInfo();
   await loadBuckets();

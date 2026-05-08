@@ -261,6 +261,42 @@ def capture():
         page.click("#lang-toggle")
         page.wait_for_timeout(150)
         _shoot(page, "10-english-toggle.png")
+        page.click("#lang-toggle")  # back to zh for the next two
+        page.wait_for_timeout(120)
+
+        # 8. Forbidden (403) error banner — stub the API client-side
+        page.evaluate("""() => {
+            document.getElementById('rows').innerHTML = '';
+            const banner = document.getElementById('error-banner');
+            banner.classList.remove('hidden');
+            banner.querySelector('.error-title').textContent =
+                '权限不足，请检查 service account 是否拥有该 bucket 的 storage.objects.list 等权限';
+            banner.querySelector('.error-detail').textContent =
+                "ln-model-backup-bucket@local-news-351203.iam.gserviceaccount.com does not have storage.objects.list access to the Google Cloud Storage bucket localnews. Permission 'storage.objects.list' denied on resource (or it may not exist).";
+            const crumb = document.getElementById('breadcrumbs');
+            crumb.innerHTML = '<span class="crumb">gs://</span><span class="sep">›</span><span class="crumb current">localnews</span>';
+            document.getElementById('stat-folders').textContent = '0 个文件夹';
+            document.getElementById('stat-files').textContent = '0 个文件';
+            document.getElementById('stat-size').textContent = '0 B';
+        }""")
+        page.wait_for_timeout(120)
+        _shoot(page, "11-error-403.png")
+
+        # 9. Auth-needed empty state — show the "please sign in" CTA
+        page.evaluate("""() => {
+            document.getElementById('error-banner').classList.add('hidden');
+            document.getElementById('auth-needed').classList.remove('hidden');
+            document.getElementById('rows').innerHTML = '';
+            document.getElementById('breadcrumbs').innerHTML = '';
+            document.getElementById('bucket-list').innerHTML = '';
+            const pill = document.getElementById('auth-pill');
+            pill.dataset.mode = 'needs';
+            document.getElementById('auth-text').textContent = '请登录';
+            document.getElementById('backend-badge').textContent = '请登录';
+            document.getElementById('backend-badge').style.color = '#d93025';
+        }""")
+        page.wait_for_timeout(120)
+        _shoot(page, "12-auth-needed.png")
 
         browser.close()
     print("done.")

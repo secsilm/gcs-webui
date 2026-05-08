@@ -138,6 +138,56 @@ def test_bad_sa_rejected():
     _run(_())
 
 
+def test_no_default_returns_needs_credentials():
+    """With no env / demo, /api/info reports needs_credentials and /api/buckets is 401."""
+    app = create_app(None)  # explicitly no default
+    t = httpx.ASGITransport(app=app)
+
+    async def _():
+        async with httpx.AsyncClient(transport=t, base_url="http://test") as c:
+            r = await c.get("/api/info")
+            assert r.status_code == 200
+            data = r.json()
+            assert data["needs_credentials"] is True
+            assert data["default_available"] is False
+            r = await c.get("/api/buckets")
+            assert r.status_code == 401
+            assert "no_credentials" in r.json()["detail"]
+    _run(_())
+
+
+def test_default_available_flag_when_demo_storage():
+    app = create_app(FakeStorage())
+    t = httpx.ASGITransport(app=app)
+
+    async def _():
+        async with httpx.AsyncClient(transport=t, base_url="http://test") as c:
+            data = (await c.get("/api/info")).json()
+            assert data["default_available"] is True
+            assert data["needs_credentials"] is False
+    _run(_())
+
+
+def test_backend_403_propagates_to_http():
+    """A storage that raises a Forbidden-like exception surfaces as HTTP 403."""
+    class Forbidden(Exception):
+        code = 403
+
+    class StubStorage(FakeStorage):
+        def list_objects(self, *a, **kw):
+            raise Forbidden("does not have storage.objects.list access")
+
+    app = create_app(StubStorage())
+    t = httpx.ASGITransport(app=app)
+
+    async def _():
+        async with httpx.AsyncClient(transport=t, base_url="http://test") as c:
+            r = await c.get("/api/objects", params={"bucket": "x"})
+            assert r.status_code == 403
+            assert "storage.objects.list" in r.json()["detail"]
+    _run(_())
+
+
 def test_sessions_isolated_per_cookie():
     """Two clients with different cookies don't share auth state."""
     app = create_app(FakeStorage())

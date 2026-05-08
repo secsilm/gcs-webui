@@ -23,6 +23,8 @@ something a Python or Java developer can `docker run` in ten seconds.
 ![Drag-and-drop upload overlay](tests/screenshots/08-drag-drop-overlay.png)
 ![Per-file upload progress](tests/screenshots/09-upload-progress.png)
 ![1,347 files in one view](tests/screenshots/06-large-listing.png)
+![403 permission error surfaced inline](tests/screenshots/11-error-403.png)
+![Sign-in required when no default SA is configured](tests/screenshots/12-auth-needed.png)
 
 ## Quick start (Docker)
 
@@ -66,14 +68,20 @@ GCS_DEMO_MODE=1 uvicorn app.main:app --port 8080
 
 ## Auth options
 
+By default the app ships **with no credentials** — every user must sign in via
+the credentials pill in the sidebar. Server-side credentials and demo data are
+opt-in for the operator.
+
 | Source | Effect |
 | --- | --- |
-| **In-UI sign-in** (click the credentials pill) | Drop / paste / pick a SA JSON. Scoped to your browser session only — multiple users with different SAs do not see each other's data. Held in memory, never written to disk. |
-| `GOOGLE_APPLICATION_CREDENTIALS` env | Default credentials used when a session has not authenticated. |
-| `GCS_SA_JSON` env | Full SA JSON inline (K8s secret friendly), same role as above. |
-| `GCS_DEMO_MODE=1` env | Force demo data, ignore credentials. |
+| **In-UI sign-in** (default) | Click the credentials pill, drop / paste / pick a SA JSON. Scoped to your browser session — multiple users with different SAs do not see each other's data. Held in memory, never written to disk. |
+| `GOOGLE_APPLICATION_CREDENTIALS` env (optional) | Provides a fallback SA file used when a session has not signed in. |
+| `GCS_SA_JSON` env (optional) | Same role as above, JSON inline (K8s secret friendly). |
+| `GCS_DEMO_MODE=1` env (optional) | Force demo data, ignore credentials. |
 
-If nothing is configured the app falls back to demo mode so the UI still loads.
+If permission is denied (403) or a bucket doesn't exist (404), the UI shows the
+exact backend message in an inline banner so you can fix the SA's IAM bindings
+without opening the server logs.
 
 ## Uploads
 

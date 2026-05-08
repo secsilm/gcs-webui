@@ -28,20 +28,55 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 COOKIE = "gcs_webui_sid"
 
 
-def _make_default_storage() -> Storage:
+def _make_default_storage() -> Optional[Storage]:
+    """Return the storage used when a session has not authenticated.
+
+    Demo mode and env credentials are opt-in. By default the app has no
+    server-side storage, and every user must sign in via the UI.
+    """
     if os.environ.get("GCS_DEMO_MODE") == "1":
         from .fake_storage import FakeStorage
         return FakeStorage()
     if os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") or os.environ.get("GCS_SA_JSON"):
         from .gcs_storage import GcsStorage
         return GcsStorage.from_env()
-    from .fake_storage import FakeStorage
-    return FakeStorage()
+    return None
+
+
+def _http_status_from_gcs(exc: Exception) -> Optional[int]:
+    """Best-effort mapping of google.api_core exceptions to an HTTP status."""
+    code = getattr(exc, "code", None)
+    if isinstance(code, int) and 400 <= code < 600:
+        return code
+    # google.api_core exceptions sometimes expose `.response.status_code`
+    resp = getattr(exc, "response", None)
+    sc = getattr(resp, "status_code", None) or getattr(resp, "status", None)
+    if isinstance(sc, int) and 400 <= sc < 600:
+        return sc
+    return None
+
+
+def _wrap(call):
+    """Run a storage call, converting backend errors into HTTPException."""
+    try:
+        return call()
+    except KeyError:
+        raise HTTPException(404, "object or bucket not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        status = _http_status_from_gcs(e)
+        if status is not None:
+            raise HTTPException(status, str(e))
+        raise HTTPException(502, f"backend error: {e}")
 
 
 def create_app(default_storage: Optional[Storage] = None) -> FastAPI:
     app = FastAPI(title="gcs-webui", docs_url=None, redoc_url=None)
-    app.state.default_storage = default_storage or _make_default_storage()
+    if default_storage is not None:
+        app.state.default_storage = default_storage
+    else:
+        app.state.default_storage = _make_default_storage()
     app.state.sessions = SessionRegistry()
 
     def get_session_id(request: Request, response: Response) -> str:
@@ -57,20 +92,37 @@ def create_app(default_storage: Optional[Storage] = None) -> FastAPI:
         sess = app.state.sessions.get(sid)
         if sess and sess.storage is not None:
             return sess.storage
-        return app.state.default_storage
+        if app.state.default_storage is not None:
+            return app.state.default_storage
+        raise HTTPException(401, "no_credentials")
 
     @app.get("/healthz")
     def healthz():
-        return {"ok": True, "backend": getattr(app.state.default_storage, "backend", "unknown")}
+        ds = app.state.default_storage
+        return {"ok": True, "backend": getattr(ds, "backend", None)}
 
     @app.get("/api/info")
-    def info(storage: Storage = Depends(get_storage)):
+    def info(sid: str = Depends(get_session_id)):
+        sess = app.state.sessions.get(sid)
+        storage = (sess.storage if sess and sess.storage else None) or app.state.default_storage
+        if storage is None:
+            return {
+                "backend": None,
+                "demo": False,
+                "identity": None,
+                "project": None,
+                "session_authenticated": False,
+                "default_available": False,
+                "needs_credentials": True,
+            }
         return {
             "backend": getattr(storage, "backend", "unknown"),
             "demo": getattr(storage, "backend", "") == "fake",
             "identity": getattr(storage, "identity", None),
             "project": getattr(storage, "project", None),
-            "session_authenticated": storage is not app.state.default_storage,
+            "session_authenticated": bool(sess and sess.storage is not None),
+            "default_available": app.state.default_storage is not None,
+            "needs_credentials": False,
         }
 
     @app.post("/api/auth/sa")
@@ -79,7 +131,6 @@ def create_app(default_storage: Optional[Storage] = None) -> FastAPI:
         sid: str = Depends(get_session_id),
         file: Optional[UploadFile] = File(None),
     ):
-        """Accept a service account JSON either as multipart `file` or raw JSON body."""
         if file is not None:
             data = await file.read()
         else:
@@ -94,7 +145,7 @@ def create_app(default_storage: Optional[Storage] = None) -> FastAPI:
             storage = GcsStorage.from_service_account_info(sa_info)
         except ValueError as e:
             raise HTTPException(400, str(e))
-        except Exception as e:  # bad cryptographic material etc
+        except Exception as e:
             raise HTTPException(400, f"Could not initialise GCS client: {e}")
 
         app.state.sessions.set_storage(sid, storage)
@@ -112,7 +163,7 @@ def create_app(default_storage: Optional[Storage] = None) -> FastAPI:
 
     @app.get("/api/buckets")
     def list_buckets(storage: Storage = Depends(get_storage)):
-        return [asdict(b) for b in storage.list_buckets()]
+        return _wrap(lambda: [asdict(b) for b in storage.list_buckets()])
 
     @app.get("/api/objects")
     def list_objects(
@@ -123,13 +174,13 @@ def create_app(default_storage: Optional[Storage] = None) -> FastAPI:
         page_size: int = Query(200, ge=1, le=1000),
         storage: Storage = Depends(get_storage),
     ):
-        page = storage.list_objects(
+        page = _wrap(lambda: storage.list_objects(
             bucket=bucket,
             prefix=prefix,
             delimiter=delimiter,
             page_token=page_token,
             page_size=page_size,
-        )
+        ))
         return {
             "items": [asdict(i) for i in page.items],
             "next_page_token": page.next_page_token,
@@ -138,20 +189,18 @@ def create_app(default_storage: Optional[Storage] = None) -> FastAPI:
 
     @app.get("/api/object")
     def get_object(bucket: str, name: str, storage: Storage = Depends(get_storage)):
-        try:
-            obj = storage.get_object(bucket, name)
-        except KeyError:
-            raise HTTPException(404, "not found")
+        obj = _wrap(lambda: storage.get_object(bucket, name))
         return asdict(obj)
 
     @app.get("/api/object/download")
     def download_object(bucket: str, name: str, storage: Storage = Depends(get_storage)):
-        try:
-            obj = storage.get_object(bucket, name)
-        except KeyError:
-            raise HTTPException(404, "not found")
+        obj = _wrap(lambda: storage.get_object(bucket, name))
 
-        signed = storage.signed_url(bucket, name)
+        signed = None
+        try:
+            signed = storage.signed_url(bucket, name)
+        except Exception:
+            signed = None
         if signed:
             return JSONResponse({"redirect": signed})
 
@@ -177,10 +226,9 @@ def create_app(default_storage: Optional[Storage] = None) -> FastAPI:
         results = []
         for f in files:
             name = normalized + (f.filename or "untitled")
-            try:
-                info = storage.upload_object(bucket, name, f.file, f.content_type)
-            except Exception as e:
-                raise HTTPException(500, f"upload failed for {name}: {e}")
+            info = _wrap(lambda f=f, name=name: storage.upload_object(
+                bucket, name, f.file, f.content_type
+            ))
             results.append(asdict(info))
         return {"uploaded": results}
 

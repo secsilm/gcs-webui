@@ -20,11 +20,16 @@
 
 ### 1. 认证 —— Service Account JSON
 
-支持三种加载方式，按优先级：
+**默认不内置任何凭据**：每个用户都必须自己上传 SA JSON。这避免了多租户部署里"看到别人 bucket"的风险，也鼓励 SA 最小权限。
 
-1. **运行时切换**：用户点击右上角的"凭据徽章"，可拖拽 / 选择 / 粘贴 SA JSON，本浏览器会话立即换用该凭据。
-2. 环境变量 `GOOGLE_APPLICATION_CREDENTIALS` 指向已挂载的 JSON（默认凭据 / 服务级别）。
-3. 环境变量 `GCS_SA_JSON` 直接保存完整 JSON 字符串（适合 K8s Secret）。
+支持的来源（按生效优先级）：
+
+1. **会话登录**（默认且唯一推荐方式）：点击侧边栏的凭据胶囊，可拖拽 / 选择 / 粘贴 SA JSON。
+2. 环境变量 `GOOGLE_APPLICATION_CREDENTIALS`（可选）：作为没有登录时的兜底 SA。
+3. 环境变量 `GCS_SA_JSON`（可选）：同上，直接内联 JSON。
+4. `GCS_DEMO_MODE=1`（可选）：强制演示数据，忽略上述凭据。
+
+`GET /api/info` 会返回 `needs_credentials` / `default_available` 标志，前端据此决定是否显示"请先登录"空态或正常列表。
 
 #### 多租户隔离
 
@@ -57,7 +62,13 @@
 
 目标 Chrome（含 Chromium 衍生）。使用的特性：CSS Grid、`IntersectionObserver`、`fetch`、ES2020 模块——全部在 Chrome 90+ 原生可用。
 
-### 6. 上传
+### 6. 错误处理
+
+* 后端 `_wrap()` 把 `google.api_core.exceptions` 系列异常映射到对应 HTTP 状态码（403 / 404 / 401 …），并把原始 message 作为 `detail` 返回。
+* 前端 `api()` 把 `!res.ok` 的响应转成带 `status` 的 `Error` 抛出；调用方根据状态码用 i18n key（`error_401 / 403 / 404 / 502 / generic`）渲染顶部红色 banner，原始 detail 以等宽字体展示，方便排查 IAM 问题。
+* 401（未登录）单独走"请先登录"空态，而不是 banner。
+
+### 7. 上传
 
 * `POST /api/object/upload`（multipart/form-data，字段 `bucket`、`prefix`、`files[]`）。
 * 浏览器端用 `XMLHttpRequest` 监听 `progress` 事件，显示每个文件的进度 toast；完成后自动刷新当前列表。

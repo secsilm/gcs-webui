@@ -1,10 +1,17 @@
 # Production-style deployment.
 #
-#   # 1. drop your service-account JSON next to this file as `sa.json`
-#   # 2. docker compose up --build
+# By default the app expects each user to sign in via the UI with their own
+# service-account JSON — no host volume or env vars are required.
 #
-# Or, if you keep the JSON in a secret manager, export it and run:
+#   docker compose up --build
 #
+# Optionally provide a server-side fallback SA (used when a session has not
+# signed in). Either:
+#
+#   # mount a JSON file next to this compose file
+#   ln -s /path/to/sa.json sa.json && docker compose up --build
+#
+#   # or pass JSON contents from a secret manager
 #   GCS_SA_JSON="$(cat /path/to/sa.json)" docker compose up --build
 #
 # The container runs read-only as a non-root user, with a 256 MB / 0.5 CPU cap.
@@ -22,10 +29,11 @@ services:
       # GCS_SA_JSON instead.
       GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-/secrets/sa.json}
       GCS_SA_JSON: ${GCS_SA_JSON:-}
-    volumes:
-      # Mount the SA file read-only. Comment this out if you use GCS_SA_JSON
-      # exclusively, or if every user signs in via the UI.
-      - ./sa.json:/secrets/sa.json:ro
+    # Mount the SA file read-only. Remove this block if you don't want a
+    # server-side fallback (every user must sign in via the UI), or if you use
+    # GCS_SA_JSON exclusively.
+    # volumes:
+    #   - ./sa.json:/secrets/sa.json:ro
     read_only: true
     tmpfs:
       - /tmp

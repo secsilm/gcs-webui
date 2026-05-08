@@ -74,6 +74,24 @@
     <span class="stat" id="stat-size">0 B</span>
   </section>
 
+  <section id="error-banner" class="error-banner hidden" role="alert">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    <div class="error-body">
+      <div class="error-title" data-i18n="error_generic">请求失败</div>
+      <div class="error-detail"></div>
+    </div>
+    <button id="error-dismiss" class="icon-btn" type="button" data-i18n-aria-label="close" aria-label="关闭">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </section>
+
+  <section id="auth-needed" class="auth-needed hidden">
+    <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    <h3 data-i18n="auth_needed_title">请先登录</h3>
+    <p data-i18n="auth_needed_body">未配置默认凭据。请上传你自己的 service account JSON 以浏览存储桶。</p>
+    <button id="auth-needed-btn" class="primary" type="button" data-i18n="auth_needed_cta">上传 service account</button>
+  </section>
+
   <section class="table-wrap">
     <div class="thead">
       <div class="th col-name" data-i18n="col_name">名称</div>
