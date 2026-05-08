@@ -9,3 +9,5 @@ sa.json
 *.local.json
 node_modules/
 .coverage
+deploy.sh
+docker-compose.internal.yml
