@@ -27,6 +27,9 @@ const I18N = {
     cancel: "取消",
     close: "关闭",
     download: "下载",
+    copy_uri: "复制 URI",
+    uri_copied: "已复制 {uri}",
+    copy_failed: "复制失败：{msg}",
     detail_bucket: "存储桶",
     detail_size: "大小",
     detail_type: "类型",
@@ -98,6 +101,9 @@ const I18N = {
     cancel: "Cancel",
     close: "Close",
     download: "Download",
+    copy_uri: "Copy URI",
+    uri_copied: "Copied {uri}",
+    copy_failed: "Copy failed: {msg}",
     detail_bucket: "Bucket",
     detail_size: "Size",
     detail_type: "Type",
@@ -209,6 +215,7 @@ const ICONS = {
   folder: '<svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8z"/></svg>',
   file:   '<svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
   download: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+  copy:     '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
 };
 
 function basename(name) {
@@ -402,12 +409,18 @@ function appendRows(items) {
       <div class="cell col-type">${it.is_prefix ? t("folder_type") : (it.content_type || "—")}</div>
       <div class="cell col-actions">
         ${it.is_prefix ? "" : `<button class="icon-btn" data-action="download" title="${escapeHtml(t("download"))}">${ICONS.download}</button>`}
+        <button class="icon-btn" data-action="copy-uri" title="${escapeHtml(t("copy_uri"))}">${ICONS.copy}</button>
       </div>
     `;
     row.addEventListener("click", (ev) => {
       if (ev.target.closest('[data-action="download"]')) {
         ev.stopPropagation();
         downloadObject(it.name);
+        return;
+      }
+      if (ev.target.closest('[data-action="copy-uri"]')) {
+        ev.stopPropagation();
+        copyGsUri(it);
         return;
       }
       if (it.is_prefix) {
@@ -469,6 +482,32 @@ function renderStats() {
   $("#stat-size").textContent = fmtBytes(size);
 }
 
+function gsUri(item) {
+  return `gs://${state.bucket}/${item.name}`;
+}
+
+async function copyGsUri(item) {
+  const uri = gsUri(item);
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(uri);
+    } else {
+      const ta = document.createElement("textarea");
+      ta.value = uri;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      ta.remove();
+      if (!ok) throw new Error("execCommand copy returned false");
+    }
+    showToast({ name: t("uri_copied", { uri }), status: "ok", text: "" }).finish("ok");
+  } catch (e) {
+    showToast({ name: t("copy_failed", { msg: e.message }), status: "error", text: "" }).finish("error");
+  }
+}
+
 function downloadObject(name) {
   // Navigate via a synthetic anchor so the browser follows any redirect to GCS
   // natively. Going through fetch() would cross-origin-redirect into GCS and
@@ -494,6 +533,8 @@ function openDetails(item) {
   const link = $("#dlg-download");
   link.href = `/api/object/download?bucket=${encodeURIComponent(state.bucket)}&name=${encodeURIComponent(item.name)}`;
   link.setAttribute("download", basename(item.name));
+  const copyBtn = $("#dlg-copy-uri");
+  copyBtn.onclick = () => copyGsUri(item);
   if (typeof dlg.showModal === "function") dlg.showModal();
 }
 
