@@ -188,7 +188,13 @@ class FakeStorage:
             payload = b"\x00" * min(info.size, 1024)
         yield payload
 
-    def signed_url(self, bucket: str, name: str, expires_seconds: int = 3600) -> Optional[str]:
+    def signed_url(
+        self,
+        bucket: str,
+        name: str,
+        expires_seconds: int = 3600,
+        response_disposition: Optional[str] = None,
+    ) -> Optional[str]:
         return None
 
     def upload_object(self, bucket, name, stream, content_type=None):
