@@ -19,7 +19,7 @@ from fastapi import (
     Response,
     UploadFile,
 )
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .sessions import SessionRegistry
@@ -222,19 +222,23 @@ def create_app(default_storage: Optional[Storage] = None) -> FastAPI:
     def download_object(bucket: str, name: str, storage: Storage = Depends(get_storage)):
         obj = _wrap(lambda: storage.get_object(bucket, name))
 
+        filename = name.rsplit("/", 1)[-1] or "download"
+        safe_filename = filename.replace("\\", "\\\\").replace('"', '\\"')
+        disposition = f'attachment; filename="{safe_filename}"'
+
         signed = None
         try:
-            signed = storage.signed_url(bucket, name)
+            signed = storage.signed_url(bucket, name, response_disposition=disposition)
         except Exception:
             signed = None
         if signed:
-            return JSONResponse({"redirect": signed})
+            # Redirect so plain <a download> links download the file, not a JSON wrapper.
+            return RedirectResponse(signed, status_code=302)
 
-        filename = name.rsplit("/", 1)[-1] or "download"
         return StreamingResponse(
             storage.read_object(bucket, name),
             media_type=obj.content_type or "application/octet-stream",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            headers={"Content-Disposition": disposition},
         )
 
     @app.post("/api/object/upload")

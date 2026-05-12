@@ -126,13 +126,20 @@ class GcsStorage:
                     break
                 yield chunk
 
-    def signed_url(self, bucket: str, name: str, expires_seconds: int = 3600) -> Optional[str]:
+    def signed_url(
+        self,
+        bucket: str,
+        name: str,
+        expires_seconds: int = 3600,
+        response_disposition: Optional[str] = None,
+    ) -> Optional[str]:
         blob = self._client.bucket(bucket).blob(name)
         try:
             return blob.generate_signed_url(
                 version="v4",
                 expiration=_dt.timedelta(seconds=expires_seconds),
                 method="GET",
+                response_disposition=response_disposition,
             )
         except Exception:
             return None

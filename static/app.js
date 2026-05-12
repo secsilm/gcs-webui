@@ -470,21 +470,16 @@ function renderStats() {
 }
 
 function downloadObject(name) {
+  // Navigate via a synthetic anchor so the browser follows any redirect to GCS
+  // natively. Going through fetch() would cross-origin-redirect into GCS and
+  // either trip CORS or save the JSON/HTML body under the wrong filename.
   const url = `/api/object/download?bucket=${encodeURIComponent(state.bucket)}&name=${encodeURIComponent(name)}`;
-  fetch(url).then(async (r) => {
-    const ct = r.headers.get("content-type") || "";
-    if (ct.includes("application/json")) {
-      const body = await r.json();
-      if (body.redirect) { window.open(body.redirect, "_blank"); return; }
-    }
-    const blob = await r.blob();
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = basename(name);
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  }).catch((e) => alert(t("download_failed", { msg: e.message })));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = basename(name);
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 }
 
 function openDetails(item) {

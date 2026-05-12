@@ -55,7 +55,13 @@ class Storage(Protocol):
 
     def read_object(self, bucket: str, name: str) -> Iterator[bytes]: ...
 
-    def signed_url(self, bucket: str, name: str, expires_seconds: int = 3600) -> Optional[str]:
+    def signed_url(
+        self,
+        bucket: str,
+        name: str,
+        expires_seconds: int = 3600,
+        response_disposition: Optional[str] = None,
+    ) -> Optional[str]:
         """Return an HTTPS URL for direct download, or None if not supported."""
         ...
 
