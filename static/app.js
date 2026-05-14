@@ -74,7 +74,7 @@ const I18N = {
     auth_needed_title: "请先登录",
     auth_needed_body: "未配置默认凭据。请上传你自己的 service account JSON 以浏览存储桶。",
     auth_needed_cta: "上传 service account",
-    preview_title: "预览（前 {n} 行）",
+    preview_title: "预览",
     preview_truncated: "已截断 · 仅显示前 {n} 行",
     preview_full: "全部内容 · 共 {n} 行",
     preview_loading: "正在加载预览…",
@@ -155,7 +155,7 @@ const I18N = {
     auth_needed_title: "Sign in required",
     auth_needed_body: "No default credentials are configured. Upload your service account JSON to browse buckets.",
     auth_needed_cta: "Upload service account",
-    preview_title: "Preview (first {n} lines)",
+    preview_title: "Preview",
     preview_truncated: "truncated · showing first {n} lines",
     preview_full: "full content · {n} lines",
     preview_loading: "loading preview…",
@@ -669,7 +669,7 @@ async function loadPreview(item) {
   const body = $("#dlg-preview");
   const meta = $("#dlg-preview-meta");
   const title = section.querySelector(".preview-title");
-  title.textContent = t("preview_title", { n: PREVIEW_LINES });
+  title.textContent = t("preview_title");
   if (!isPreviewable(item)) {
     section.classList.add("hidden");
     return;
