@@ -28,6 +28,41 @@ from .storage import Storage
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 COOKIE = "gcs_webui_sid"
 
+# File extensions previewable as plain text when the server-side
+# Content-Type isn't a recognisable text/* mime.
+PREVIEW_TEXT_EXTENSIONS = {
+    "csv", "tsv", "txt", "log", "json", "jsonl", "ndjson",
+    "md", "markdown", "rst",
+    "xml", "yaml", "yml", "html", "htm",
+    "py", "js", "mjs", "ts", "css",
+    "sh", "bash", "zsh", "ini", "cfg", "conf", "toml", "sql",
+    "rs", "go", "java", "c", "h", "cpp", "hpp",
+    "env", "properties", "gitignore", "dockerfile",
+}
+
+PREVIEW_TEXT_MIMES = {
+    "application/json",
+    "application/x-ndjson",
+    "application/xml",
+    "application/javascript",
+    "application/x-yaml",
+    "application/x-sh",
+    "application/x-shellscript",
+    "application/csv",
+}
+
+
+def _is_previewable(name: str, content_type: Optional[str]) -> bool:
+    if content_type:
+        ct = content_type.split(";", 1)[0].strip().lower()
+        if ct.startswith("text/"):
+            return True
+        if ct in PREVIEW_TEXT_MIMES:
+            return True
+    base = name.rsplit("/", 1)[-1].lower()
+    ext = base.rsplit(".", 1)[-1] if "." in base else base
+    return ext in PREVIEW_TEXT_EXTENSIONS
+
 
 def _make_default_storage() -> Optional[Storage]:
     """Return the storage used when a session has not authenticated.
@@ -240,6 +275,58 @@ def create_app(default_storage: Optional[Storage] = None) -> FastAPI:
             media_type=obj.content_type or "application/octet-stream",
             headers={"Content-Disposition": disposition},
         )
+
+    @app.get("/api/object/preview")
+    def preview_object(
+        bucket: str,
+        name: str,
+        lines: int = Query(10, ge=1, le=500),
+        max_bytes: int = Query(256 * 1024, ge=1024, le=4 * 1024 * 1024),
+        storage: Storage = Depends(get_storage),
+    ):
+        obj = _wrap(lambda: storage.get_object(bucket, name))
+        if not _is_previewable(name, obj.content_type):
+            raise HTTPException(415, "preview not supported for this file type")
+
+        buf = bytearray()
+
+        def _read():
+            gen = storage.read_object(bucket, name)
+            try:
+                for chunk in gen:
+                    buf.extend(chunk)
+                    if len(buf) >= max_bytes or buf.count(b"\n") >= lines:
+                        break
+            finally:
+                close = getattr(gen, "close", None)
+                if callable(close):
+                    close()
+
+        _wrap(_read)
+
+        try:
+            text = buf.decode("utf-8")
+            encoding = "utf-8"
+        except UnicodeDecodeError:
+            text = buf.decode("utf-8", errors="replace")
+            encoding = "utf-8-replace"
+
+        all_lines = text.splitlines()
+        shown = all_lines[:lines]
+        truncated = (
+            (obj.size and len(buf) < obj.size)
+            or len(all_lines) > lines
+        )
+        return {
+            "content": "\n".join(shown),
+            "lines_shown": len(shown),
+            "lines_requested": lines,
+            "truncated": bool(truncated),
+            "total_size": obj.size,
+            "bytes_read": len(buf),
+            "encoding": encoding,
+            "content_type": obj.content_type,
+        }
 
     @app.post("/api/object/upload")
     async def upload_objects(
