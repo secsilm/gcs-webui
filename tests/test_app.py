@@ -170,6 +170,27 @@ def test_preview_short_file_not_truncated(client):
     _run(_())
 
 
+def test_preview_exact_line_count_not_truncated(client):
+    """A file with exactly `lines` rows shouldn't be flagged truncated."""
+    async def _():
+        async with client as c:
+            payload = ("\n".join(f"row{i}" for i in range(10)) + "\n").encode()
+            await c.post(
+                "/api/object/upload",
+                data={"bucket": "demo-static-assets", "prefix": "previews/"},
+                files={"files": ("exactly10.csv", payload, "text/csv")},
+            )
+            r = await c.get("/api/object/preview", params={
+                "bucket": "demo-static-assets",
+                "name": "previews/exactly10.csv",
+            })
+            assert r.status_code == 200, r.text
+            data = r.json()
+            assert data["lines_shown"] == 10
+            assert data["truncated"] is False
+    _run(_())
+
+
 def test_preview_unsupported_type(client):
     async def _():
         async with client as c:

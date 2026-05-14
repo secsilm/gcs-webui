@@ -289,13 +289,19 @@ def create_app(default_storage: Optional[Storage] = None) -> FastAPI:
             raise HTTPException(415, "preview not supported for this file type")
 
         buf = bytearray()
+        # Stop once we have evidence of a line beyond the requested window
+        # (lines + 1 newlines), so a file with exactly `lines` rows isn't
+        # falsely flagged truncated.
+        stop_at_newlines = lines + 1
 
         def _read():
             gen = storage.read_object(bucket, name)
             try:
                 for chunk in gen:
                     buf.extend(chunk)
-                    if len(buf) >= max_bytes or buf.count(b"\n") >= lines:
+                    if len(buf) >= max_bytes:
+                        break
+                    if buf.count(b"\n") >= stop_at_newlines:
                         break
             finally:
                 close = getattr(gen, "close", None)
@@ -313,10 +319,8 @@ def create_app(default_storage: Optional[Storage] = None) -> FastAPI:
 
         all_lines = text.splitlines()
         shown = all_lines[:lines]
-        truncated = (
-            (obj.size and len(buf) < obj.size)
-            or len(all_lines) > lines
-        )
+        hit_byte_limit = len(buf) >= max_bytes and (not obj.size or len(buf) < obj.size)
+        truncated = hit_byte_limit or len(all_lines) > lines
         return {
             "content": "\n".join(shown),
             "lines_shown": len(shown),
