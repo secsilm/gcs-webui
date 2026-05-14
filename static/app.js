@@ -188,6 +188,54 @@ function isPreviewable(item) {
   return PREVIEW_EXTS.has(ext);
 }
 
+// Returns the delimiter character for tabular files, or null if the file
+// is not a CSV/TSV we want to render as a table.
+function tabularDelim(item) {
+  const ct = (item.content_type || "").split(";")[0].trim().toLowerCase();
+  const base = (item.name || "").split("/").pop().toLowerCase();
+  const ext = base.includes(".") ? base.split(".").pop() : "";
+  if (ext === "csv" || ct === "text/csv" || ct === "application/csv") return ",";
+  if (ext === "tsv" || ct === "text/tab-separated-values") return "\t";
+  return null;
+}
+
+// Minimal RFC-4180-ish CSV parser: handles quoted fields with embedded
+// delimiters, escaped quotes ("") and CRLF/LF row endings.
+function parseDelimited(text, delim) {
+  const rows = [];
+  let row = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { cur += '"'; i++; }
+        else inQuotes = false;
+      } else {
+        cur += ch;
+      }
+      continue;
+    }
+    if (ch === '"' && cur === "") { inQuotes = true; continue; }
+    if (ch === delim) { row.push(cur); cur = ""; continue; }
+    if (ch === "\r") {
+      if (text[i + 1] === "\n") i++;
+      row.push(cur); cur = "";
+      rows.push(row); row = [];
+      continue;
+    }
+    if (ch === "\n") {
+      row.push(cur); cur = "";
+      rows.push(row); row = [];
+      continue;
+    }
+    cur += ch;
+  }
+  if (cur !== "" || row.length > 0) { row.push(cur); rows.push(row); }
+  return rows;
+}
+
 let lang = localStorage.getItem("gcs-webui-lang") || "zh";
 
 function t(key, vars) {
@@ -578,6 +626,44 @@ function openDetails(item) {
 
 let _previewToken = 0;
 
+function renderPreviewText(body, text) {
+  body.classList.remove("as-table");
+  const pre = document.createElement("pre");
+  pre.className = "preview-pre";
+  pre.textContent = text;
+  body.replaceChildren(pre);
+}
+
+function renderPreviewTable(body, rows) {
+  body.classList.add("as-table");
+  const table = document.createElement("table");
+  table.className = "preview-table";
+  const ncols = rows.reduce((m, r) => Math.max(m, r.length), 0);
+  if (rows.length > 0) {
+    const thead = document.createElement("thead");
+    const trh = document.createElement("tr");
+    for (let i = 0; i < ncols; i++) {
+      const th = document.createElement("th");
+      th.textContent = rows[0][i] ?? "";
+      trh.appendChild(th);
+    }
+    thead.appendChild(trh);
+    table.appendChild(thead);
+  }
+  const tbody = document.createElement("tbody");
+  for (let i = 1; i < rows.length; i++) {
+    const tr = document.createElement("tr");
+    for (let j = 0; j < ncols; j++) {
+      const td = document.createElement("td");
+      td.textContent = rows[i][j] ?? "";
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  body.replaceChildren(table);
+}
+
 async function loadPreview(item) {
   const section = $("#dlg-preview-section");
   const body = $("#dlg-preview");
@@ -589,7 +675,7 @@ async function loadPreview(item) {
     return;
   }
   section.classList.remove("hidden");
-  body.classList.remove("error");
+  body.classList.remove("error", "as-table");
   body.textContent = t("preview_loading");
   meta.textContent = "";
   const token = ++_previewToken;
@@ -600,11 +686,18 @@ async function loadPreview(item) {
       lines: PREVIEW_LINES,
     });
     if (token !== _previewToken) return; // dialog was reused for another file
-    if (!data.content && data.lines_shown === 0) {
-      body.textContent = t("preview_empty");
+
+    const delim = tabularDelim(item);
+    if (data.lines_shown === 0) {
+      renderPreviewText(body, t("preview_empty"));
+    } else if (delim) {
+      const rows = parseDelimited(data.content, delim);
+      if (rows.length > 0) renderPreviewTable(body, rows);
+      else renderPreviewText(body, data.content);
     } else {
-      body.textContent = data.content;
+      renderPreviewText(body, data.content);
     }
+
     meta.textContent = data.truncated
       ? t("preview_truncated", { n: data.lines_shown })
       : t("preview_full", { n: data.lines_shown });
@@ -612,10 +705,10 @@ async function loadPreview(item) {
     if (token !== _previewToken) return;
     body.classList.add("error");
     if (e.status === 415) {
-      body.textContent = t("preview_unsupported");
+      renderPreviewText(body, t("preview_unsupported"));
       meta.textContent = "";
     } else {
-      body.textContent = t("preview_failed", { msg: e.message || "" });
+      renderPreviewText(body, t("preview_failed", { msg: e.message || "" }));
       meta.textContent = "";
     }
   }
