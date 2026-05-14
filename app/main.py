@@ -281,7 +281,7 @@ def create_app(default_storage: Optional[Storage] = None) -> FastAPI:
         bucket: str,
         name: str,
         lines: int = Query(10, ge=1, le=500),
-        max_bytes: int = Query(256 * 1024, ge=1024, le=4 * 1024 * 1024),
+        max_bytes: int = Query(256 * 1024, ge=64, le=4 * 1024 * 1024),
         storage: Storage = Depends(get_storage),
     ):
         obj = _wrap(lambda: storage.get_object(bucket, name))
@@ -289,10 +289,6 @@ def create_app(default_storage: Optional[Storage] = None) -> FastAPI:
             raise HTTPException(415, "preview not supported for this file type")
 
         buf = bytearray()
-        # Stop once we have evidence of a line beyond the requested window
-        # (lines + 1 newlines), so a file with exactly `lines` rows isn't
-        # falsely flagged truncated.
-        stop_at_newlines = lines + 1
 
         def _read():
             gen = storage.read_object(bucket, name)
@@ -301,14 +297,16 @@ def create_app(default_storage: Optional[Storage] = None) -> FastAPI:
                     buf.extend(chunk)
                     if len(buf) >= max_bytes:
                         break
-                    if buf.count(b"\n") >= stop_at_newlines:
-                        break
             finally:
                 close = getattr(gen, "close", None)
                 if callable(close):
                     close()
 
         _wrap(_read)
+
+        # A backend may hand us a single chunk larger than max_bytes; honour the cap.
+        if len(buf) > max_bytes:
+            del buf[max_bytes:]
 
         try:
             text = buf.decode("utf-8")
@@ -318,14 +316,22 @@ def create_app(default_storage: Optional[Storage] = None) -> FastAPI:
             encoding = "utf-8-replace"
 
         all_lines = text.splitlines()
-        shown = all_lines[:lines]
-        hit_byte_limit = len(buf) >= max_bytes and (not obj.size or len(buf) < obj.size)
-        truncated = hit_byte_limit or len(all_lines) > lines
+        # If we read the entire file, show all of it. Only cap to `lines`
+        # and flag truncated when the file actually has more data than we
+        # could fit in max_bytes — small files should preview in full.
+        fully_read = obj.size is not None and len(buf) >= obj.size
+        if fully_read:
+            shown = all_lines
+            truncated = False
+        else:
+            shown = all_lines[:lines]
+            truncated = True
+
         return {
             "content": "\n".join(shown),
             "lines_shown": len(shown),
             "lines_requested": lines,
-            "truncated": bool(truncated),
+            "truncated": truncated,
             "total_size": obj.size,
             "bytes_read": len(buf),
             "encoding": encoding,
