@@ -112,6 +112,7 @@ def _build_dataset() -> dict[str, dict[str, ObjectInfo]]:
 
 
 _DATA = _build_dataset()
+_PAYLOADS: dict[str, dict[str, bytes]] = {b: {} for b in _DATA}
 _BUCKET_META = {
     "demo-app-logs": BucketInfo(
         name="demo-app-logs", location="US", storage_class="STANDARD",
@@ -178,6 +179,10 @@ class FakeStorage:
 
     def read_object(self, bucket: str, name: str) -> Iterator[bytes]:
         info = self.get_object(bucket, name)
+        stored = _PAYLOADS.get(bucket, {}).get(name)
+        if stored is not None:
+            yield stored
+            return
         # synthesise content based on mime type so previews render reasonably
         if info.content_type and info.content_type.startswith("text/"):
             payload = (
@@ -210,4 +215,5 @@ class FakeStorage:
             generation=int(datetime.now(timezone.utc).timestamp() * 1_000_000),
         )
         _DATA[bucket][name] = info
+        _PAYLOADS.setdefault(bucket, {})[name] = data
         return info

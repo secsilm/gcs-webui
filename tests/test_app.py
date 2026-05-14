@@ -124,6 +124,82 @@ def test_upload_then_listed(client):
     _run(_())
 
 
+def test_preview_text_file(client):
+    async def _():
+        async with client as c:
+            # Upload a CSV with > 10 lines
+            csv_lines = [f"col1,col2,col{i}" for i in range(25)]
+            csv_payload = "\n".join(csv_lines).encode()
+            r = await c.post(
+                "/api/object/upload",
+                data={"bucket": "demo-static-assets", "prefix": "previews/"},
+                files={"files": ("rows.csv", csv_payload, "text/csv")},
+            )
+            assert r.status_code == 200, r.text
+
+            r = await c.get("/api/object/preview", params={
+                "bucket": "demo-static-assets",
+                "name": "previews/rows.csv",
+            })
+            assert r.status_code == 200, r.text
+            data = r.json()
+            assert data["lines_shown"] == 10
+            assert data["truncated"] is True
+            assert data["content"].splitlines()[0] == "col1,col2,col0"
+            assert data["content"].splitlines()[-1] == "col1,col2,col9"
+    _run(_())
+
+
+def test_preview_short_file_not_truncated(client):
+    async def _():
+        async with client as c:
+            payload = b"a\nb\nc\n"
+            await c.post(
+                "/api/object/upload",
+                data={"bucket": "demo-static-assets", "prefix": "previews/"},
+                files={"files": ("tiny.txt", payload, "text/plain")},
+            )
+            r = await c.get("/api/object/preview", params={
+                "bucket": "demo-static-assets",
+                "name": "previews/tiny.txt",
+            })
+            assert r.status_code == 200, r.text
+            data = r.json()
+            assert data["lines_shown"] == 3
+            assert data["truncated"] is False
+    _run(_())
+
+
+def test_preview_unsupported_type(client):
+    async def _():
+        async with client as c:
+            r = await c.get("/api/object/preview", params={
+                "bucket": "demo-ml-datasets",
+                "name": "vision/cats-vs-dogs/train/00000.jpg",
+            })
+            assert r.status_code == 415
+    _run(_())
+
+
+def test_preview_by_extension_when_octet_stream(client):
+    async def _():
+        async with client as c:
+            # Upload a CSV labelled as application/octet-stream — falls back to extension
+            payload = b"a,b,c\n1,2,3\n"
+            await c.post(
+                "/api/object/upload",
+                data={"bucket": "demo-static-assets", "prefix": "previews/"},
+                files={"files": ("by-ext.csv", payload, "application/octet-stream")},
+            )
+            r = await c.get("/api/object/preview", params={
+                "bucket": "demo-static-assets",
+                "name": "previews/by-ext.csv",
+            })
+            assert r.status_code == 200
+            assert r.json()["lines_shown"] == 2
+    _run(_())
+
+
 def test_bad_sa_rejected():
     # Each call gets a fresh app to keep sessions isolated
     app = create_app(FakeStorage())
