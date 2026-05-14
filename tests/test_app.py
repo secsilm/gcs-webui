@@ -124,10 +124,11 @@ def test_upload_then_listed(client):
     _run(_())
 
 
-def test_preview_text_file(client):
+def test_preview_small_csv_shows_all_lines(client):
+    """A small file that fits within max_bytes should preview in full,
+    not be capped to the default 10-line window."""
     async def _():
         async with client as c:
-            # Upload a CSV with > 10 lines
             csv_lines = [f"col1,col2,col{i}" for i in range(25)]
             csv_payload = "\n".join(csv_lines).encode()
             r = await c.post(
@@ -143,10 +144,35 @@ def test_preview_text_file(client):
             })
             assert r.status_code == 200, r.text
             data = r.json()
-            assert data["lines_shown"] == 10
-            assert data["truncated"] is True
+            assert data["lines_shown"] == 25
+            assert data["truncated"] is False
             assert data["content"].splitlines()[0] == "col1,col2,col0"
-            assert data["content"].splitlines()[-1] == "col1,col2,col9"
+            assert data["content"].splitlines()[-1] == "col1,col2,col24"
+    _run(_())
+
+
+def test_preview_truncates_when_file_exceeds_max_bytes(client):
+    async def _():
+        async with client as c:
+            csv_lines = [f"col1,col2,col{i}" for i in range(200)]
+            csv_payload = "\n".join(csv_lines).encode()
+            await c.post(
+                "/api/object/upload",
+                data={"bucket": "demo-static-assets", "prefix": "previews/"},
+                files={"files": ("big.csv", csv_payload, "text/csv")},
+            )
+            # Force truncation by setting max_bytes well below the file size.
+            r = await c.get("/api/object/preview", params={
+                "bucket": "demo-static-assets",
+                "name": "previews/big.csv",
+                "max_bytes": 128,
+                "lines": 10,
+            })
+            assert r.status_code == 200, r.text
+            data = r.json()
+            assert data["truncated"] is True
+            assert 1 <= data["lines_shown"] <= 10
+            assert data["content"].splitlines()[0] == "col1,col2,col0"
     _run(_())
 
 
